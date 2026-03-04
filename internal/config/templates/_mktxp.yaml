@@ -1,0 +1,27 @@
+mktxp:
+  listen: "0.0.0.0:49090" # Space-separated list of socket addresses (IPv4 and IPv6)
+  socket_timeout: 2 # RouterOS API socket timeout (seconds)
+
+  initial_delay_on_failure: 120 # Initial backoff delay after connection failure (seconds)
+  max_delay_on_failure: 900 # Maximum backoff delay (seconds)
+  delay_inc_div: 5 # Backoff growth divisor
+
+  bandwidth: false # Enable bandwidth testing (requires internet access)
+  bandwidth_test_dns_server: "8.8.8.8"
+  bandwidth_test_interval: 420 # Bandwidth test interval (seconds)
+  minimal_collect_interval: 5 # Minimum time between metric collections (seconds)
+
+  verbose_mode: false
+
+  fetch_routers_in_parallel: false # Collect multiple routers concurrently
+  max_worker_threads: 5 # Max goroutines for parallel fetch
+  max_scrape_duration: 30 # Per-router scrape timeout (seconds)
+  total_max_scrape_duration: 90 # Overall scrape timeout (seconds)
+
+  persistent_router_connection_pool: true # Keep connections open between scrapes
+  persistent_dhcp_cache: true # Cache DHCP records between scrapes
+  prometheus_headers_deduplication: false # Always deduplicate HELP/TYPE headers
+
+  probe_connection_pool: false # Reuse connections for /probe endpoint
+  probe_connection_pool_ttl: 300
+  probe_connection_pool_max_size: 128

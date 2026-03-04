@@ -1,0 +1,72 @@
+# Default configuration applied to all routers (can be overridden per router)
+default:
+  enabled: true
+  module_only: false # use this entry only as a probe module (skip /metrics)
+  hostname: localhost # RouterOS IP address
+  port: 8728 # RouterOS API port (8729 for SSL)
+
+  username: username # RouterOS user (needs 'read' and 'api' permissions)
+  password: password
+  credentials_file: "" # Path to YAML file with 'username' and 'password' keys
+
+  custom_labels: {} # Labels injected to all device metrics, e.g. {dc: london, rack: a1}
+
+  use_ssl: false
+  no_ssl_certificate: false
+  ssl_certificate_verify: false
+  ssl_check_hostname: true
+  ssl_ca_file: ""
+  plaintext_login: true # false for RouterOS < 6.43
+
+  health: true
+  installed_packages: true
+  dhcp: true
+  dhcp_lease: true
+  connections: true
+  connection_stats: false
+  interface: true
+  route: true
+  pool: true
+  firewall: true
+  neighbor: true
+  address_list: [] # List of firewall address list names to monitor
+  dns: false
+  ipv6_route: false
+  ipv6_pool: false
+  ipv6_firewall: false
+  ipv6_neighbor: false
+  ipv6_address_list: []
+  poe: true
+  monitor: true
+  netwatch: true
+  public_ip: true
+  wireless: true
+  wireless_clients: true
+  capsman: true
+  capsman_clients: true
+  w60g: false
+  eoip: false
+  gre: false
+  ipip: false
+  lte: false
+  ipsec: false
+  switch_port: false
+  kid_control_assigned: false
+  kid_control_dynamic: false
+  user: true
+  queue: true
+  bfd: false
+  bgp: false
+  routing_stats: false
+  certificate: false
+  container: false
+  remote_dhcp_entry: ""
+  remote_capsman_entry: ""
+  interface_name_format: name # 'name', 'comment', or 'combined'
+  check_for_updates: false
+
+# Per-router configurations — each key is the router name
+routers:
+  Sample-Router:
+    hostname: 192.168.88.1
+    # custom_labels: {dc: london, rack: a1}
