@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -116,8 +117,19 @@ Endpoints:
 	}
 }
 
+// getScrapeTimeout safely determines the timeout for the current HTTP request
+func (s *Server) getScrapeTimeout(r *http.Request) time.Duration {
+	timeout := s.totalTimeout
+	if promTimeout := r.Header.Get("X-Prometheus-Scrape-Timeout-Seconds"); promTimeout != "" {
+		if parsed, err := strconv.ParseFloat(promTimeout, 64); err == nil {
+			timeout = time.Duration(parsed*float64(time.Second)) - (500 * time.Millisecond)
+		}
+	}
+	return timeout
+}
+
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("handleMetrics called", "num_entries", len(s.entries), "registry_nil", s.registry == nil)
+	slog.Debug("handleMetrics called", "num_entries", len(s.entries))
 	s.mu.RLock()
 	entries := make([]*entry.RouterEntry, 0, len(s.entries))
 	for _, e := range s.entries {
@@ -125,55 +137,66 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 
-	totalCtx, cancel := context.WithTimeout(r.Context(), s.totalTimeout)
+	timeout := s.getScrapeTimeout(r)
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	registry := prometheus.NewRegistry()
-	if s.registry != nil {
-		allCollectors := s.registry.All()
-		slog.Debug("Registering collectors", "num_collectors", len(allCollectors))
+	if s.registry == nil {
+		promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+		return
+	}
 
-		var wg sync.WaitGroup
-		for _, e := range entries {
-			if e == nil {
-				slog.Warn("Entry is nil, skipping")
-				continue
-			}
+	allCollectors := s.registry.All()
+	var wg sync.WaitGroup
+
+	for _, e := range entries {
+		if e == nil || !e.ConfigEntry.Enabled {
+			continue
+		}
+
+		wg.Add(1)
+		go func(routerEntry *entry.RouterEntry) {
+			defer wg.Done()
 
 			select {
 			case s.semaphore <- struct{}{}:
-			case <-totalCtx.Done():
-				cancel()
-				wg.Wait()
-				http.Error(w, "Timeout waiting for scrapes", http.StatusGatewayTimeout)
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-s.semaphore }()
+
+			if !routerEntry.IsReady(ctx) {
+				slog.Warn("Router not ready, skipping", "router", routerEntry.RouterName)
 				return
 			}
 
-			wg.Add(1)
-			go func(e *entry.RouterEntry) {
-				defer wg.Done()
-				defer func() { <-s.semaphore }()
-
-				scrapeCtx, scrapeCancel := context.WithTimeout(totalCtx, time.Duration(s.config.MaxScrapeDuration)*time.Second)
-				e.Connect(scrapeCtx)
-				scrapeCancel()
-
-				for _, c := range allCollectors {
-					if err := registry.Register(&routerCollector{
-						collector:      c,
-						entry:          e,
-						ctx:            scrapeCtx,
-						scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
-					}); err != nil {
-						slog.Warn("Failed to register collector", "collector", c.Name(), "error", err)
-					}
-				}
-			}(e)
-		}
-		wg.Wait()
+			for _, c := range allCollectors {
+				_ = registry.Register(&routerCollector{
+					collector:      c,
+					entry:          routerEntry,
+					ctx:            ctx,
+					scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
+				})
+			}
+		}(e)
 	}
 
-	promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		http.Error(w, "Scrape timed out during setup", http.StatusGatewayTimeout)
+		return
+	case <-done:
+		promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+			Timeout: timeout,
+		}).ServeHTTP(w, r)
+	}
 }
 
 func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
@@ -192,43 +215,38 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.totalTimeout)
+	timeout := s.getScrapeTimeout(r)
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
 	select {
 	case s.semaphore <- struct{}{}:
-	default:
-		http.Error(w, "Server busy, too many concurrent scrapes", http.StatusServiceUnavailable)
+	case <-ctx.Done():
+		http.Error(w, "Request cancelled", http.StatusGatewayTimeout)
 		return
 	}
 	defer func() { <-s.semaphore }()
 
-	registry := prometheus.NewRegistry()
-	s.collectRouterMetrics(ctx, e, registry)
-
-	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
-	handler.ServeHTTP(w, r)
-}
-
-func (s *Server) collectRouterMetrics(ctx context.Context, e *entry.RouterEntry, registry *prometheus.Registry) {
 	if !e.IsReady(ctx) {
-		slog.Warn("Router not ready, skipping collection", "router", e.RouterName)
+		http.Error(w, "Target router is unreachable", http.StatusBadGateway)
 		return
 	}
 
+	registry := prometheus.NewRegistry()
 	if s.registry != nil {
-		collectors := s.registry.All()
-		for _, c := range collectors {
-			if err := registry.Register(&routerCollector{
+		for _, c := range s.registry.All() {
+			_ = registry.Register(&routerCollector{
 				collector:      c,
 				entry:          e,
 				ctx:            ctx,
 				scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
-			}); err != nil {
-				slog.Warn("Failed to register collector", "collector", c.Name(), "error", err)
-			}
+			})
 		}
 	}
+
+	promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		Timeout: timeout,
+	}).ServeHTTP(w, r)
 }
 
 type routerCollector struct {
@@ -244,7 +262,11 @@ func (rc *routerCollector) Describe(ch chan<- *prometheus.Desc) {
 
 func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now()
-	if err := rc.collector.Collect(rc.ctx, rc.entry, ch); err != nil {
+
+	scrapeCtx, cancel := context.WithTimeout(rc.ctx, rc.scrapeDuration)
+	defer cancel()
+
+	if err := rc.collector.Collect(scrapeCtx, rc.entry, ch); err != nil {
 		routerName := "unknown"
 		if rc.entry != nil {
 			routerName = rc.entry.RouterName
