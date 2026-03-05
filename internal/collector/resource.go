@@ -46,7 +46,7 @@ func (c *SystemResourceCollector) Collect(ctx context.Context, e *entry.RouterEn
 	sharedLabels := []string{"version", "board_name", "cpu", "architecture_name"}
 	sharedVals := []string{record["version"], record["board_name"], record["cpu"], record["architecture_name"]}
 
-	mb.GaugeVal(ch, "system_uptime", "Time interval since boot-up",
+	mb.GaugeVal(ch, "system_uptime", "System uptime in seconds",
 		float64(utils.ParseMktUptime(record["uptime"])),
 		sharedLabels, sharedVals,
 	)

@@ -40,7 +40,7 @@ func (c *DNSCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		parseFloat bool
 	}{
 		"cache_size": {"dns_info", "DNS cache size in bytes", true},
-		"cache_used": {"dns_info", "DNS cache usage in bytes", true},
+		"cache_used": {"dns_info", "DNS cache size in bytes", true},
 	}
 
 	for key, meta := range metricMap {
