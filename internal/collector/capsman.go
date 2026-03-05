@@ -56,7 +56,7 @@ func (c *CAPsMANCollector) collectRemoteCaps(_ *entry.RouterEntry, mb *MetricBui
 			continue
 		}
 
-		mb.Info(ch, "capsman_remote_caps", "CAPsMAN remote caps", []string{"router_id", "name", "version", "base_mac", "board"}, rec)
+		mb.Info(ch, "capsman_remote_caps", "CAPsMAN remote caps", []string{"routerboard_name", "name", "version", "base_mac", "board"}, rec)
 	}
 }
 
@@ -79,8 +79,8 @@ func (c *CAPsMANCollector) collectRegistrations(e *entry.RouterEntry, mb *Metric
 	for iface, count := range interfaceCount {
 		mb.GaugeVal(ch, "capsman_registrations_count", "Number of active registration per CAPsMAN interface",
 			count,
-			[]string{"router_id", "interface"},
-			[]string{e.RouterID["router_id"], iface},
+			[]string{"routerboard_name", "interface"},
+			[]string{e.RouterID["routerboard_name"], iface},
 		)
 	}
 
@@ -92,14 +92,14 @@ func (c *CAPsMANCollector) collectRegistrations(e *entry.RouterEntry, mb *Metric
 		rxBytes := ParseFloat(rec["rx-bytes"])
 		signalStrength := ParseFloat(rec["rx-signal"])
 
-		clientLabels := []string{"router_id", "dhcp_name", "mac_address"}
-		clientVals := []string{e.RouterID["router_id"], rec["dhcp_name"], rec["mac-address"]}
+		clientLabels := []string{"routerboard_name", "dhcp_name", "mac_address"}
+		clientVals := []string{e.RouterID["routerboard_name"], rec["dhcp_name"], rec["mac-address"]}
 
 		mb.GaugeVal(ch, "capsman_clients_tx_bytes", "Number of sent packet bytes", txBytes, clientLabels, clientVals)
 		mb.GaugeVal(ch, "capsman_clients_rx_bytes", "Number of received packet bytes", rxBytes, clientLabels, clientVals)
 		mb.GaugeVal(ch, "capsman_clients_signal_strength", "Client devices signal strength", signalStrength, clientLabels, clientVals)
 
-		clientInfoLabels := []string{"router_id", "dhcp_name", "dhcp_address", "rx_signal", "ssid", "tx_rate", "rx_rate", "interface", "mac_address", "uptime"}
+		clientInfoLabels := []string{"routerboard_name", "dhcp_name", "dhcp_address", "rx_signal", "ssid", "tx_rate", "rx_rate", "interface", "mac_address", "uptime"}
 		mb.Info(ch, "capsman_clients_devices", "Registered client devices info", clientInfoLabels, rec)
 	}
 }
@@ -112,8 +112,8 @@ func (c *CAPsMANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBui
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, "name", "mac_address")
-		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["mac-address"]}
+		labelKeysWithRouter := append([]string{"routerboard_name"}, "name", "mac_address")
+		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["mac-address"]}
 
 		metricMap := map[string]struct {
 			name       string

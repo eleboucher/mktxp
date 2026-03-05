@@ -40,8 +40,8 @@ func (c *KidControlDeviceCollector) Collect(ctx context.Context, e *entry.Router
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["mac_address"], rec["ip_address"]}
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["mac_address"], rec["ip_address"]}
 
 		metricMap := map[string]struct {
 			name       string
@@ -103,7 +103,7 @@ func (c *KidControlDeviceCollector) Collect(ctx context.Context, e *entry.Router
 			mb.GaugeVal(ch, "kid_control_disabled", "Kid Control disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		infoLabels := append([]string{"router_id"}, labelKeys...)
+		infoLabels := append([]string{"routerboard_name"}, labelKeys...)
 		mb.Info(ch, "kid_control_device", "Kid-control device Info", infoLabels, rec)
 	}
 

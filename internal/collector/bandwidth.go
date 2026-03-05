@@ -30,7 +30,7 @@ func (c *BandwidthCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 	}
 
 	mb := NewMetricBuilder(e)
-	labelKeysWithRouter := []string{"router_id"}
+	labelKeysWithRouter := []string{"routerboard_name"}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
@@ -54,7 +54,7 @@ func (c *BandwidthCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 				} else {
 					value = 1
 				}
-				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{e.RouterID["router_id"]})
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{e.RouterID["routerboard_name"]})
 			}
 		}
 

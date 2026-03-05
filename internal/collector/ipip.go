@@ -29,7 +29,7 @@ func (c *IPIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 	mb := NewMetricBuilder(e)
 	labelKeys := []string{"name", "remote_address"}
-	labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+	labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
 
 	metricMap := map[string]struct {
 		name       string
@@ -57,9 +57,9 @@ func (c *IPIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 
 		if rec["running"] == trueStr && rec["disabled"] != trueStr {
-			mb.GaugeVal(ch, "ipip_status", "IPIP tunnel status (1=running, 0=stopped)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "ipip_status", "IPIP tunnel status (1=running, 0=stopped)", 1.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
 		} else {
-			mb.GaugeVal(ch, "ipip_status", "IPIP tunnel status (1=running, 0=stopped)", 0.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "ipip_status", "IPIP tunnel status (1=running, 0=stopped)", 0.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
 		}
 
 		for rosKey, metric := range metricMap {
@@ -74,7 +74,7 @@ func (c *IPIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 						metricValue = 0.0
 					}
 				}
-				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
 			}
 		}
 

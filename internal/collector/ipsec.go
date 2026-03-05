@@ -37,7 +37,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
 
 		collectIPSecPeer(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
@@ -54,7 +54,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			continue
 		}
 
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
 		collectIPSecProposal(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
@@ -70,7 +70,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			continue
 		}
 
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
 		collectIPSecPolicy(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
@@ -107,14 +107,14 @@ func collectIPSecPeer(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[st
 			} else {
 				value = 1.0
 			}
-			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 		}
 	}
 
 	if rec["state"] == "running" || rec["state"] == "active" {
-		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	} else {
-		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 0.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	}
 
 	if disabledVal, ok := rec["disabled"]; ok {
@@ -122,19 +122,19 @@ func collectIPSecPeer(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[st
 		if disabledVal == trueStr {
 			disabled = 1.0
 		}
-		mb.GaugeVal(ch, "ipsec_peer_disabled", "IPSec peer disabled status", disabled, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_peer_disabled", "IPSec peer disabled status", disabled, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	}
 
 	if _, ok := rec["auth_algorithm"]; ok && rec["auth_algorithm"] != "" {
-		mb.GaugeVal(ch, "ipsec_auth_algorithm", "IPSec authentication algorithm", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_auth_algorithm", "IPSec authentication algorithm", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	}
 
 	if _, ok := rec["encryption_algorithm"]; ok && rec["encryption_algorithm"] != "" {
-		mb.GaugeVal(ch, "ipsec_encryption_algorithm", "IPSec encryption algorithm", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_encryption_algorithm", "IPSec encryption algorithm", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	}
 
 	if _, ok := rec["pfs_group"]; ok && rec["pfs_group"] != "" {
-		mb.GaugeVal(ch, "ipsec_pfs_group", "IPSec PFS group", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		mb.GaugeVal(ch, "ipsec_pfs_group", "IPSec PFS group", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["remote_address"]})
 	}
 
 	if comment, ok := rec["comment"]; ok && comment != "" {
@@ -164,14 +164,14 @@ func collectIPSecProposal(mb *MetricBuilder, ch chan<- prometheus.Metric, rec ma
 			} else {
 				value = 1.0
 			}
-			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 		}
 	}
 
 	if rec["disabled"] != trueStr {
-		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 	} else {
-		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 0.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 	}
 
 	if comment, ok := rec["comment"]; ok && comment != "" {
@@ -204,14 +204,14 @@ func collectIPSecPolicy(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[
 			} else {
 				value = 1.0
 			}
-			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 		}
 	}
 
 	if rec["disabled"] != trueStr {
-		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 	} else {
-		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 0.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], ""})
 	}
 
 	if comment, ok := rec["comment"]; ok && comment != "" {

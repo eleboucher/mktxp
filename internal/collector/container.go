@@ -38,8 +38,8 @@ func (c *ContainerCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-		labelVals := []string{e.RouterID["router_id"], rec["name"]}
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelVals := []string{e.RouterID["routerboard_name"], rec["name"]}
 
 		metricMap := map[string]struct {
 			name       string

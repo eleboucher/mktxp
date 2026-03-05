@@ -37,7 +37,7 @@ func (c *LTECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
 		collectLTE(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
@@ -76,14 +76,14 @@ func collectLTE(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]s
 			} else {
 				value = 1.0
 			}
-			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 		}
 	}
 
 	if rec["running"] == trueStr && rec["connected"] == trueStr {
-		mb.GaugeVal(ch, "lte_status", "LTE interface status (1=up, 0=down)", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+		mb.GaugeVal(ch, "lte_status", "LTE interface status (1=up, 0=down)", 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 	} else {
-		mb.GaugeVal(ch, "lte_status", "LTE interface status (1=up, 0=down)", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+		mb.GaugeVal(ch, "lte_status", "LTE interface status (1=up, 0=down)", 0.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 	}
 
 	if disabledVal, ok := rec["disabled"]; ok {
@@ -91,7 +91,7 @@ func collectLTE(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]s
 		if disabledVal == trueStr {
 			disabled = 1.0
 		}
-		mb.GaugeVal(ch, "lte_disabled", "LTE interface disabled status", disabled, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+		mb.GaugeVal(ch, "lte_disabled", "LTE interface disabled status", disabled, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 	}
 
 	if connectedVal, ok := rec["connected"]; ok {
@@ -99,7 +99,7 @@ func collectLTE(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]s
 		if connectedVal == trueStr {
 			connected = 1.0
 		}
-		mb.GaugeVal(ch, "lte_connected", "LTE connection status (1=connected, 0=disconnected)", connected, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+		mb.GaugeVal(ch, "lte_connected", "LTE connection status (1=connected, 0=disconnected)", connected, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 	}
 
 	for _, key := range []string{"imei", "iccid", "apn", "mode", "ip-address"} {
@@ -117,7 +117,7 @@ func collectLTE(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]s
 			case "ip-address":
 				help = "LTE assigned IP address"
 			}
-			mb.GaugeVal(ch, "lte_"+key, help, 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["device_name"]})
+			mb.GaugeVal(ch, "lte_"+key, help, 1.0, labelKeysWithRouter, []string{routerID["routerboard_name"], rec["name"], rec["device_name"]})
 		}
 	}
 

@@ -213,16 +213,16 @@ func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 	metricDesc := prometheus.NewDesc(
 		"mktxp_collection_time_total",
 		"Total time spent collecting metrics in milliseconds",
-		[]string{"collector", "router_id"},
+		[]string{"collector", "routerboard_name"},
 		nil,
 	)
-	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.CounterValue, float64(duration), rc.collector.Name(), rc.getRouterID())
+	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.CounterValue, float64(duration), rc.collector.Name(), rc.getRouterboardName())
 }
 
-func (rc *routerCollector) getRouterID() string {
+func (rc *routerCollector) getRouterboardName() string {
 	if rc.entry != nil {
-		if routerID, ok := rc.entry.RouterID["router_id"]; ok {
-			return routerID
+		if name, ok := rc.entry.RouterID["routerboard_name"]; ok {
+			return name
 		}
 		return rc.entry.RouterName
 	}

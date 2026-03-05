@@ -38,8 +38,8 @@ func (c *EOIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]}
+		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]}
 
 		metricMap := map[string]struct {
 			name       string

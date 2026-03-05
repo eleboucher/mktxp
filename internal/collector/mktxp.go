@@ -24,11 +24,11 @@ func (c *MktxpCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 	}
 
 	mb := NewMetricBuilder(e)
-	labelKeysWithRouter := []string{"router_id"}
+	labelKeysWithRouter := []string{"routerboard_name"}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
-		c.collectSystemMetrics(mb, ch, rec, labelKeysWithRouter, e.RouterID["router_id"])
+		c.collectSystemMetrics(mb, ch, rec, labelKeysWithRouter, e.RouterID["routerboard_name"])
 	}
 
 	return nil
