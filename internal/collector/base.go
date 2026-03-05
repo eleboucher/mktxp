@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -216,7 +215,6 @@ func (b *MetricBuilder) isDuplicate(name string, labelVals []string) bool {
 	}
 
 	if _, exists := b.emitted[name][key]; exists {
-		slog.Debug("Duplicate metric suppressed", "metric", name, "labels", key)
 		return true
 	}
 

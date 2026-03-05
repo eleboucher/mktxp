@@ -131,18 +131,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if s.registry != nil {
 		allCollectors := s.registry.All()
 		slog.Debug("Registering collectors", "num_collectors", len(allCollectors))
-		for _, c := range allCollectors {
-			if len(entries) == 0 {
-				registry.MustRegister(&routerCollector{collector: c, entry: nil})
-			} else {
-				for _, e := range entries {
-					if e == nil {
-						slog.Warn("Entry is nil, skipping")
-						continue
-					}
-					e.Connect(r.Context())
-					registry.MustRegister(&routerCollector{collector: c, entry: e})
-				}
+
+		for _, e := range entries {
+			if e == nil {
+				slog.Warn("Entry is nil, skipping")
+				continue
+			}
+			e.Connect(r.Context())
+
+			for _, c := range allCollectors {
+				registry.MustRegister(&routerCollector{collector: c, entry: e})
 			}
 		}
 	}

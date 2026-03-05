@@ -81,12 +81,12 @@ func runExport(cmd *cobra.Command, args []string) {
 		ListenOverride: exportListen,
 	}
 
-	srv := server.New(sysCfg, opts)
-
-	registerCollectors(srv)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	srv := server.New(sysCfg, opts)
+
+	registerCollectors(ctx, srv)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -116,8 +116,15 @@ func applyExportOverrides(cfg *config.SystemConfig) {
 	}
 }
 
-func registerCollectors(srv *server.Server) {
+func registerCollectors(ctx context.Context, srv *server.Server) {
 	for _, c := range collector.AllCollectors() {
 		srv.RegisterCollector(c)
+
+		if bgTasker, ok := c.(collector.BackgroundTasker); ok {
+			go func(name string) {
+				bgTasker.StartBackgroundTest(ctx, name)
+				slog.Info("Started background task", "collector", name)
+			}(c.Name())
+		}
 	}
 }
