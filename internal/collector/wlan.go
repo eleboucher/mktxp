@@ -22,14 +22,37 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		return nil
 	}
 
-	records, err := e.APIConn.Run(ctx, "/interface/wireless/print")
+	mb := NewMetricBuilder(e)
+
+	monitorRecords, err := e.APIConn.Run(ctx, "/interface/wireless/monitor")
 	if err != nil {
-		slog.Debug("wlan collect failed", "router", e.RouterName, "err", err)
+		slog.Debug("wlan monitor collect failed", "router", e.RouterName, "err", err)
+	} else {
+		c.collectMonitor(ctx, e, mb, ch, monitorRecords)
+	}
+
+	registrationRecords, err := e.APIConn.Run(ctx, "/interface/wireless/registration-table/print")
+	if err != nil {
+		slog.Debug("wlan registration-table collect failed", "router", e.RouterName, "err", err)
+	} else {
+		c.collectRegistrations(ctx, e, mb, ch, registrationRecords)
+	}
+
+	interfaceRecords, err := e.APIConn.Run(ctx, "/interface/wireless/print")
+	if err != nil {
+		slog.Debug("wlan interface collect failed", "router", e.RouterName, "err", err)
 		return nil
 	}
 
-	mb := NewMetricBuilder(e)
-	labelKeys := []string{"name", "ssid"}
+	c.collectInterfaces(ctx, e, mb, ch, interfaceRecords)
+
+	return nil
+}
+
+func (c *WLANCollector) collectMonitor(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+	var noiseFloorRecords []map[string]string
+	var txCCQRecords []map[string]string
+	var registeredClientsRecords []map[string]string
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
@@ -37,8 +60,145 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 			continue
 		}
 
+		if rec["noise-floor"] != "" {
+			noiseFloorRecords = append(noiseFloorRecords, rec)
+		}
+		if rec["overall-tx-ccq"] != "" {
+			txCCQRecords = append(txCCQRecords, rec)
+		}
+		if rec["registered-clients"] != "" || rec["registered-peers"] != "" {
+			registeredClientsRecords = append(registeredClientsRecords, rec)
+		}
+	}
+
+	if len(noiseFloorRecords) > 0 {
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"noise-floor": {"wlan_noise_floor", "Noise floor threshold", true},
+		}
+
+		for _, rec := range noiseFloorRecords {
+			labelKeys := []string{"router_id", "channel"}
+			labelVals := []string{e.RouterID["router_id"], rec["channel"]}
+
+			for key, meta := range metricMap {
+				if val, ok := rec[key]; ok && val != "" {
+					var value float64
+					if meta.parseFloat {
+						value = ParseFloat(val)
+					} else {
+						value = 1
+					}
+					mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+				}
+			}
+		}
+	}
+
+	if len(txCCQRecords) > 0 {
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"overall-tx-ccq": {"wlan_overall_tx_ccq", "Client Connection Quality for transmitting", true},
+		}
+
+		for _, rec := range txCCQRecords {
+			labelKeys := []string{"router_id", "channel"}
+			labelVals := []string{e.RouterID["router_id"], rec["channel"]}
+
+			for key, meta := range metricMap {
+				if val, ok := rec[key]; ok && val != "" {
+					var value float64
+					if meta.parseFloat {
+						value = ParseFloat(val)
+					} else {
+						value = 1
+					}
+					mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+				}
+			}
+		}
+	}
+
+	if len(registeredClientsRecords) > 0 {
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"registered-clients": {"wlan_registered_clients", "Number of registered clients", true},
+			"registered-peers":   {"wlan_registered_clients", "Number of registered clients", true},
+		}
+
+		for _, rec := range registeredClientsRecords {
+			labelKeys := []string{"router_id", "channel"}
+			labelVals := []string{e.RouterID["router_id"], rec["channel"]}
+
+			for key, meta := range metricMap {
+				if val, ok := rec[key]; ok && val != "" {
+					var value float64
+					if meta.parseFloat {
+						value = ParseFloat(val)
+					} else {
+						value = 1
+					}
+					mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+					break
+				}
+			}
+		}
+	}
+}
+
+func (c *WLANCollector) collectRegistrations(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+	if !e.ConfigEntry.WirelessClients {
+		return
+	}
+
+	var registrationRecords []map[string]string
+
+	for _, raw := range records {
+		rec := TrimRecord(raw, nil)
+		rec["dhcp_name"] = rec["host-name"]
+		rec["dhcp_address"] = rec["address"]
+		registrationRecords = append(registrationRecords, rec)
+	}
+
+	for _, rec := range registrationRecords {
+		txBytes := ParseFloat(rec["tx-bytes"])
+		rxBytes := ParseFloat(rec["rx-bytes"])
+		signalStrength := ParseFloat(rec["signal-strength"])
+		signalToNoise := ParseFloat(rec["signal-to-noise"])
+		txCCQ := ParseFloat(rec["tx-ccq"])
+
+		clientLabels := []string{"router_id", "dhcp_name", "mac_address"}
+		clientVals := []string{e.RouterID["router_id"], rec["dhcp_name"], rec["mac-address"]}
+
+		mb.GaugeVal(ch, "wlan_clients_tx_bytes", "Number of sent packet bytes", txBytes, clientLabels, clientVals)
+		mb.GaugeVal(ch, "wlan_clients_rx_bytes", "Number of received packet bytes", rxBytes, clientLabels, clientVals)
+		mb.GaugeVal(ch, "wlan_clients_signal_strength", "Average strength of the client signal recevied by AP", signalStrength, clientLabels, clientVals)
+		mb.GaugeVal(ch, "wlan_clients_signal_to_noise", "Client devices signal to noise ratio", signalToNoise, clientLabels, clientVals)
+		mb.GaugeVal(ch, "wlan_clients_tx_ccq", "Client Connection Quality (CCQ) for transmit", txCCQ, clientLabels, clientVals)
+
+		clientInfoLabels := []string{"router_id", "dhcp_name", "dhcp_address", "rx_signal", "ssid", "tx_rate", "rx_rate", "interface", "mac_address", "uptime"}
+		mb.Info(ch, "wlan_clients_devices", "Client devices info", clientInfoLabels, rec)
+	}
+}
+
+func (c *WLANCollector) collectInterfaces(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+	for _, raw := range records {
+		rec := TrimRecord(raw, nil)
+		if rec["name"] == "" {
+			continue
+		}
+
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelKeysWithRouter := append([]string{"router_id"}, "name", "ssid")
 		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["ssid"]}
 
 		metricMap := map[string]struct {
@@ -103,6 +263,4 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 				rec)
 		}
 	}
-
-	return nil
 }

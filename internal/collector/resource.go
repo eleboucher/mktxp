@@ -58,5 +58,12 @@ func (c *SystemResourceCollector) Collect(ctx context.Context, e *entry.RouterEn
 	mb.Gauge(ch, "system_cpu_count", "Number of CPUs present on the system", "cpu_count", sharedLabels, record)
 	mb.Gauge(ch, "system_cpu_frequency", "Current CPU frequency", "cpu_frequency", sharedLabels, record)
 
+	if e.ConfigEntry.CheckForUpdates {
+		curVersion := record["version"]
+		if curVersion != "" {
+			mb.GaugeVal(ch, "update_available", "Is there a newer version available", 0, []string{"newest_version"}, []string{curVersion})
+		}
+	}
+
 	return nil
 }

@@ -83,10 +83,20 @@ func collectIPSecPeer(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[st
 		help       string
 		parseFloat bool
 	}{
-		"remote-port": {"ipsec_remote_port", "IPSec remote port", true},
-		"local-port":  {"ipsec_local_port", "IPSec local port", true},
-		"lifetime":    {"ipsec_lifetime", "IPSec lifetime", true},
-		"pfs":         {"ipsec_pfs", "IPSec PFS", true},
+		"remote-port":           {"ipsec_remote_port", "IPSec remote port", true},
+		"local-port":            {"ipsec_local_port", "IPSec local port", true},
+		"lifetime":              {"ipsec_lifetime", "IPSec lifetime", true},
+		"pfs":                   {"ipsec_pfs", "IPSec PFS", true},
+		"last-seen":             {"ipsec_peer_last_seen", "IPSec peer last seen timestamp", true},
+		"natt-enabled":          {"ipsec_peer_natt_enabled", "IPSec peer NAT-T enabled", false},
+		"responder":             {"ipsec_peer_responder", "IPSec peer responder mode", false},
+		"rx-bytes":              {"ipsec_peer_rx_byte", "IPSec peer received bytes", true},
+		"tx-bytes":              {"ipsec_peer_tx_byte", "IPSec peer transmitted bytes", true},
+		"rx-packets":            {"ipsec_peer_rx_packet", "IPSec peer received packets", true},
+		"tx-packets":            {"ipsec_peer_tx_packet", "IPSec peer transmitted packets", true},
+		"security-associations": {"ipsec_peer_security_association", "IPSec peer security associations", true},
+		"state":                 {"ipsec_peer_state", "IPSec peer state", false},
+		"uptime":                {"ipsec_peer_uptime", "IPSec peer uptime", true},
 	}
 
 	for key, meta := range metricMap {

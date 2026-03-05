@@ -94,5 +94,14 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		}
 	}
 
+	if e.ConfigEntry.DHCPLease {
+		for _, record := range trimmed {
+			dhcpName := record["host_name"]
+			mb.GaugeVal(ch, "dhcp_name", "DHCP host name", 1,
+				[]string{"router_id", "address", "mac_address", "dhcp_name"},
+				[]string{e.RouterID["router_id"], record["address"], record["mac_address"], dhcpName})
+		}
+	}
+
 	return nil
 }

@@ -53,6 +53,14 @@ func (c *BFDCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 			"remote-system-id":     {"bfd_remote_system_id", "BFD remote system ID", false},
 			"local-discriminator":  {"bfd_local_discriminator", "BFD local discriminator", true},
 			"remote-discriminator": {"bfd_remote_discriminator", "BFD remote discriminator", true},
+			"hold-time":            {"bfd_hold_time", "BFD hold time (ms)", true},
+			"packets-rx":           {"bfd_rx_packet", "BFD control packets received", true},
+			"state-changes":        {"bfd_state_change", "Number of times the state changed", true},
+			"actual-tx-interval":   {"bfd_tx_interval", "BFD actual transmit interval (ms)", true},
+			"desired-tx-interval":  {"bfd_tx_interval_desired", "BFD desired transmit interval (ms)", true},
+			"packets-tx":           {"bfd_tx_packet", "BFD control packets transmitted", true},
+			"up":                   {"bfd_up", "BFD is up", false},
+			"uptime":               {"bfd_uptime", "BFD uptime (ms)", true},
 		}
 
 		for key, meta := range metricMap {

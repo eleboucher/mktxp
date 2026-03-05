@@ -21,56 +21,36 @@ func (c *AddressListCollector) Collect(ctx context.Context, e *entry.RouterEntry
 		return nil
 	}
 
-	records, err := e.APIConn.Run(ctx, "/ip/address/print")
+	mb := NewMetricBuilder(e)
+
+	if err := c.collectIPv4(ctx, e, mb, ch); err != nil {
+		slog.Debug("address_list ipv4 collect failed", "router", e.RouterName, "err", err)
+	}
+
+	return nil
+}
+
+func (c *AddressListCollector) collectIPv4(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric) error {
+	records, err := e.APIConn.Run(ctx, "/ip/firewall/address-list/print")
 	if err != nil {
-		slog.Debug("address_list collect failed", "router", e.RouterName, "err", err)
+		return err
+	}
+
+	wantedKeys := []string{"list", "address", "dynamic", "timeout", "disabled", "comment"}
+
+	var trimmed []map[string]string
+	for _, raw := range records {
+		rec := TrimRecord(raw, wantedKeys)
+		trimmed = append(trimmed, rec)
+	}
+
+	if len(trimmed) == 0 {
 		return nil
 	}
 
-	mb := NewMetricBuilder(e)
-	labelKeys := []string{"interface", "address", "network"}
-
-	for _, raw := range records {
-		rec := TrimRecord(raw, nil)
-		if rec["interface"] == "" {
-			continue
-		}
-
-		rec["name"] = FormatInterfaceName(rec["interface"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["address"], rec["network"]}
-
-		metricMap := map[string]struct {
-			name       string
-			help       string
-			parseFloat bool
-		}{
-			"address":  {"ip_address_assigned", "Indicates if an IP address is assigned to an interface", false},
-			"dynamic":  {"ip_address_dynamic", "Indicates if the IP address is dynamically assigned", false},
-			"disabled": {"ip_address_disabled", "Indicates if the IP address is disabled", false},
-		}
-
-		for key, meta := range metricMap {
-			if val, ok := rec[key]; ok && val != "" {
-				var value float64
-				if meta.parseFloat {
-					value = ParseFloat(val)
-				} else {
-					if key == "address" {
-						value = 1
-					} else {
-						value = ParseBool(val)
-					}
-				}
-				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
-			}
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "ip_address_info", "Information about IP address assignment",
-				[]string{"interface", "address", "network", "comment"},
-				rec)
-		}
+	labels := []string{"list", "address", "dynamic", "timeout", "disabled", "comment"}
+	for _, rec := range trimmed {
+		mb.Gauge(ch, "firewall_address_list", "Firewall IPv4 Address List Entry", "timeout", labels, rec)
 	}
 
 	return nil

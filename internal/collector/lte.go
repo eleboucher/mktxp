@@ -50,16 +50,22 @@ func collectLTE(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]s
 		help       string
 		parseFloat bool
 	}{
-		"signal-strength": {"lte_signal_strength", "LTE signal strength in dBm", true},
-		"rssi":            {"lte_rssi", "LTE RSSI in dBm", true},
-		"rsrp":            {"lte_rsrp", "LTE RSRP in dBm", true},
-		"rsrq":            {"lte_rsrq", "LTE RSRQ in dB", true},
-		"sinr":            {"lte_sinr", "LTE SINR in dB", true},
-		"operator":        {"lte_operator", "LTE operator", false},
-		"cell-id":         {"lte_cell_id", "LTE cell ID", false},
-		"tac":             {"lte_tac", "LTE TAC", false},
-		"uplink-speed":    {"lte_uplink_speed", "LTE uplink speed", true},
-		"downlink-speed":  {"lte_downlink_speed", "LTE downlink speed", true},
+		"signal-strength":     {"lte_signal_strength", "LTE signal strength in dBm", true},
+		"rssi":                {"lte_rssi", "LTE RSSI in dBm", true},
+		"rsrp":                {"lte_rsrp", "LTE RSRP in dBm", true},
+		"rsrq":                {"lte_rsrq", "LTE RSRQ in dB", true},
+		"sinr":                {"lte_sinr", "LTE SINR in dB", true},
+		"operator":            {"lte_current_operator", "LTE operator", false},
+		"cell-id":             {"lte_cell_id", "LTE cell ID", false},
+		"tac":                 {"lte_tac", "LTE TAC", false},
+		"uplink-speed":        {"lte_rate_up", "LTE uplink speed", true},
+		"downlink-speed":      {"lte_rate_down", "LTE downlink speed", true},
+		"session-uptime":      {"lte_session_uptime", "LTE session uptime", true},
+		"pin-status":          {"lte_pin_status", "LTE PIN status", false},
+		"registration-status": {"lte_registration_status", "LTE registration status", false},
+		"nr-rsrp":             {"lte_nr_rsrp", "5G NR RSRP in dBm", true},
+		"nr-rsrq":             {"lte_nr_rsrq", "5G NR RSRQ in dB", true},
+		"nr-sinr":             {"lte_nr_sinr", "5G NR SINR in dB", true},
 	}
 
 	for key, meta := range metricMap {

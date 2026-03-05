@@ -37,6 +37,7 @@ func AllCollectors() []Collector {
 		NewGRECollector(),
 		NewIPIPCollector(),
 		NewKidControlCollector(),
+		NewKidControlDeviceCollector(),
 		NewContainerCollector(),
 		NewMktxpCollector(),
 		NewW60GCollector(),
