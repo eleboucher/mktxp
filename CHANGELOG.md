@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.3](https://github.com/eleboucher/mktxp/compare/0.0.2...0.0.3) (2026-03-05)
+
+
+### Features
+
+* merge health and hw_health ([87e7644](https://github.com/eleboucher/mktxp/commit/87e764476bd4bf466294727cdbc783407f9ae429))
+* **speedtest:** use github.com/showwin/speedtest-go ([2af5808](https://github.com/eleboucher/mktxp/commit/2af5808e0cc87e246817523ebb87edcbc787c4c4))
+
 ## [0.0.2](https://github.com/eleboucher/mktxp/compare/0.0.1...0.0.2) (2026-03-05)
 
 
