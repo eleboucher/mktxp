@@ -70,6 +70,20 @@ func (c *SwitchPortCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 		mb.Counter(ch, "switch_rx_align_error", "Total count of received align error event", "rx_align_error", labelKeys, rec)
 		mb.Counter(ch, "switch_tx_collision", "Total count of transmitted frames that made collisions", "tx_collision", labelKeys, rec)
 
+		// Additional Error Counters (from Python switch_collector.py)
+		if _, ok := rec["rx_fragment"]; ok {
+			mb.Counter(ch, "switch_rx_fragment", "Total count of received fragment frames", "rx_fragment", labelKeys, rec)
+		}
+		if _, ok := rec["rx_overflow"]; ok {
+			mb.Counter(ch, "switch_rx_overflow", "Total count of received overflow frames", "rx_overflow", labelKeys, rec)
+		}
+		if _, ok := rec["tx_underrun"]; ok {
+			mb.Counter(ch, "switch_tx_underrun", "Total count of transmitted underrun frames", "tx_underrun", labelKeys, rec)
+		}
+		if _, ok := rec["tx_deferred"]; ok {
+			mb.Counter(ch, "switch_tx_deferred", "Total count of transmitted deferred frames", "tx_deferred", labelKeys, rec)
+		}
+
 		// Driver Stats (often prefixed with 'driver' in Python output)
 		// If keys exist, we map them explicitly to match Python metric names
 		if _, ok := rec["driver_rx_byte"]; ok {
