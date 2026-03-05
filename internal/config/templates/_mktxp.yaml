@@ -20,7 +20,6 @@ mktxp:
 
   persistent_router_connection_pool: true # Keep connections open between scrapes
   persistent_dhcp_cache: true # Cache DHCP records between scrapes
-  prometheus_headers_deduplication: false # Always deduplicate HELP/TYPE headers
 
   probe_connection_pool: false # Reuse connections for /probe endpoint
   probe_connection_pool_ttl: 300

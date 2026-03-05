@@ -268,8 +268,6 @@ func (e *EnvConfigurator) setSystemBoolField(sc *SystemConfig, field string, val
 		sc.PersistentRouterConnectionPool = value
 	case "persistent_dhcp_cache":
 		sc.PersistentDHCPCache = value
-	case "prometheus_headers_deduplication":
-		sc.PrometheusHeadersDeduplication = value
 	case "probe_connection_pool":
 		sc.ProbeConnectionPool = value
 	}

@@ -88,7 +88,6 @@ type SystemConfig struct {
 	TotalMaxScrapeDuration         int    `yaml:"total_max_scrape_duration"`
 	PersistentRouterConnectionPool bool   `yaml:"persistent_router_connection_pool"`
 	PersistentDHCPCache            bool   `yaml:"persistent_dhcp_cache"`
-	PrometheusHeadersDeduplication bool   `yaml:"prometheus_headers_deduplication"`
 	ProbeConnectionPool            bool   `yaml:"probe_connection_pool"`
 	ProbeConnectionPoolTTL         int    `yaml:"probe_connection_pool_ttl"`
 	ProbeConnectionPoolMaxSize     int    `yaml:"probe_connection_pool_max_size"`
@@ -252,7 +251,6 @@ var systemFieldMap = map[string]FieldInfo{
 	"total_max_scrape_duration":         {"TotalMaxScrapeDuration", "total_max_scrape_duration", false, true, false, false, false},
 	"persistent_router_connection_pool": {"PersistentRouterConnectionPool", "persistent_router_connection_pool", true, false, false, false, false},
 	"persistent_dhcp_cache":             {"PersistentDHCPCache", "persistent_dhcp_cache", true, false, false, false, false},
-	"prometheus_headers_deduplication":  {"PrometheusHeadersDeduplication", "prometheus_headers_deduplication", true, false, false, false, false},
 	"probe_connection_pool":             {"ProbeConnectionPool", "probe_connection_pool", true, false, false, false, false},
 	"probe_connection_pool_ttl":         {"ProbeConnectionPoolTTL", "probe_connection_pool_ttl", false, true, false, false, false},
 	"probe_connection_pool_max_size":    {"ProbeConnectionPoolMaxSize", "probe_connection_pool_max_size", false, true, false, false, false},
@@ -343,7 +341,6 @@ func hardcodedSystemDefaults() SystemConfig {
 		TotalMaxScrapeDuration:         90,
 		PersistentRouterConnectionPool: true,
 		PersistentDHCPCache:            true,
-		PrometheusHeadersDeduplication: false,
 		ProbeConnectionPool:            false,
 		ProbeConnectionPoolTTL:         300,
 		ProbeConnectionPoolMaxSize:     128,
