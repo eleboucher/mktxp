@@ -28,14 +28,14 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	if err != nil {
 		slog.Debug("wlan monitor collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectMonitor(ctx, e, mb, ch, monitorRecords)
+		c.collectMonitor(e, mb, ch, monitorRecords)
 	}
 
 	registrationRecords, err := e.APIConn.Run(ctx, "/interface/wireless/registration-table/print")
 	if err != nil {
 		slog.Debug("wlan registration-table collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectRegistrations(ctx, e, mb, ch, registrationRecords)
+		c.collectRegistrations(e, mb, ch, registrationRecords)
 	}
 
 	interfaceRecords, err := e.APIConn.Run(ctx, "/interface/wireless/print")
@@ -44,12 +44,12 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		return nil
 	}
 
-	c.collectInterfaces(ctx, e, mb, ch, interfaceRecords)
+	c.collectInterfaces(e, mb, ch, interfaceRecords)
 
 	return nil
 }
 
-func (c *WLANCollector) collectMonitor(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *WLANCollector) collectMonitor(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	var noiseFloorRecords []map[string]string
 	var txCCQRecords []map[string]string
 	var registeredClientsRecords []map[string]string
@@ -155,7 +155,7 @@ func (c *WLANCollector) collectMonitor(ctx context.Context, e *entry.RouterEntry
 	}
 }
 
-func (c *WLANCollector) collectRegistrations(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *WLANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	if !e.ConfigEntry.WirelessClients {
 		return
 	}
@@ -190,7 +190,7 @@ func (c *WLANCollector) collectRegistrations(ctx context.Context, e *entry.Route
 	}
 }
 
-func (c *WLANCollector) collectInterfaces(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *WLANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
 		if rec["name"] == "" {

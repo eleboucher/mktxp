@@ -28,14 +28,14 @@ func (c *CAPsMANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 	if err != nil {
 		slog.Debug("capsman remote-cap collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectRemoteCaps(ctx, e, mb, ch, remoteCaps)
+		c.collectRemoteCaps(e, mb, ch, remoteCaps)
 	}
 
 	registrations, err := e.APIConn.Run(ctx, "/caps-man/registration-table/print")
 	if err != nil {
 		slog.Debug("capsman registration-table collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectRegistrations(ctx, e, mb, ch, registrations)
+		c.collectRegistrations(e, mb, ch, registrations)
 	}
 
 	interfaces, err := e.APIConn.Run(ctx, "/caps-man/interface/print")
@@ -44,12 +44,12 @@ func (c *CAPsMANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 		return nil
 	}
 
-	c.collectInterfaces(ctx, e, mb, ch, interfaces)
+	c.collectInterfaces(e, mb, ch, interfaces)
 
 	return nil
 }
 
-func (c *CAPsMANCollector) collectRemoteCaps(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *CAPsMANCollector) collectRemoteCaps(_ *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
 		if rec["name"] == "" {
@@ -60,7 +60,7 @@ func (c *CAPsMANCollector) collectRemoteCaps(ctx context.Context, e *entry.Route
 	}
 }
 
-func (c *CAPsMANCollector) collectRegistrations(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *CAPsMANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	if !e.ConfigEntry.CAPsMANClients {
 		return
 	}
@@ -104,7 +104,7 @@ func (c *CAPsMANCollector) collectRegistrations(ctx context.Context, e *entry.Ro
 	}
 }
 
-func (c *CAPsMANCollector) collectInterfaces(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *CAPsMANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
 		if rec["name"] == "" {
