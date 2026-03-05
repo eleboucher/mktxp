@@ -159,11 +159,27 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 		return routeros.DialContext(ctx, addr, username, password)
 	}
 
-	slog.Warn("Connecting with TLS", "host", c.cfg.Hostname, "insecure", c.cfg.NoSSLCertificate)
-
 	tlsCfg := &tls.Config{ServerName: c.cfg.Hostname}
+
 	if c.cfg.NoSSLCertificate || !c.cfg.SSLCertificateVerify || !c.cfg.SSLCheckHostname {
+		insecureReasons := []string{}
+		if c.cfg.NoSSLCertificate {
+			insecureReasons = append(insecureReasons, "NoSSLCertificate")
+		}
+		if !c.cfg.SSLCertificateVerify {
+			insecureReasons = append(insecureReasons, "SSLCertificateVerify disabled")
+		}
+		if !c.cfg.SSLCheckHostname {
+			insecureReasons = append(insecureReasons, "SSLCheckHostname disabled")
+		}
+
+		slog.Error("TLS security disabled - certificate verification bypassed",
+			"host", c.cfg.Hostname,
+			"reasons", insecureReasons)
+
 		tlsCfg.InsecureSkipVerify = true //nolint:gosec
+	} else {
+		slog.Info("Connecting with TLS (secure mode)", "host", c.cfg.Hostname)
 	}
 
 	return routeros.DialTLSContext(ctx, addr, username, password, tlsCfg)
