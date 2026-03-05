@@ -71,13 +71,7 @@ func (c *BandwidthCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 
 func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorName string) {
 	go func() {
-		sysCfg := config.Handler.SystemEntry()
-		interval := time.Duration(sysCfg.BandwidthTestInterval) * time.Second
-
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		slog.Info("Starting background bandwidth test", "collector", collectorName, "interval_seconds", interval.Seconds())
+		slog.Info("Starting background bandwidth test", "collector", collectorName)
 
 		runSpeedtestOnce := func() {
 			result, err := c.runSpeedtest()
@@ -99,11 +93,14 @@ func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorN
 		runSpeedtestOnce()
 
 		for {
+			sysCfg := config.Handler.SystemEntry()
+			interval := time.Duration(sysCfg.BandwidthTestInterval) * time.Second
+
 			select {
 			case <-ctx.Done():
 				slog.Info("Stopping background bandwidth test", "collector", collectorName)
 				return
-			case <-ticker.C:
+			case <-time.After(interval):
 				runSpeedtestOnce()
 			}
 		}
