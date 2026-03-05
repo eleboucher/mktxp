@@ -38,7 +38,6 @@ func AllCollectors() []Collector {
 		NewKidControlCollector(),
 		NewKidControlDeviceCollector(),
 		NewContainerCollector(),
-		NewMktxpCollector(),
 		NewW60GCollector(),
 		NewBandwidthCollector(),
 	}
