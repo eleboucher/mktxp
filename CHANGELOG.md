@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2](https://github.com/eleboucher/mktxp/compare/0.0.1...0.0.2) (2026-03-05)
+
+
+### Bug Fixes
+
+* **ci:** fix build and release ci ([edb8b45](https://github.com/eleboucher/mktxp/commit/edb8b4545f0dd3bfe9f84e124d2af84daf6aaa4a))
+
 ## 0.0.1 (2026-03-05)
 
 
