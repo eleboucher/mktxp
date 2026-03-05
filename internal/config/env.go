@@ -13,7 +13,7 @@ import (
 
 const envPrefix = "MKTXP_"
 
-// EnvConfigurator handles environment variable configuration overrides.
+// EnvConfigurator handles environment variable configuration overrides using Viper.
 type EnvConfigurator struct {
 	v *viper.Viper
 }
@@ -37,29 +37,35 @@ func (e *EnvConfigurator) ApplyRouterOverrides(h *ConfigHandler) error {
 		routerNames = append(routerNames, name)
 	}
 
-	envVars := os.Environ()
+	e.v = viper.New()
+	e.v.SetEnvPrefix(envPrefix)
+	e.v.AutomaticEnv()
+	e.v.SetEnvKeyReplacer(strings.NewReplacer("_", "_"))
 
+	envVars := os.Environ()
 	for _, envVar := range envVars {
 		key, value, found := strings.Cut(envVar, "=")
 		if !found || !strings.HasPrefix(key, envPrefix) {
 			continue
 		}
 
-		parts := strings.SplitN(key[len(envPrefix):], "_", 2)
-		if len(parts) != 2 {
-			continue
+		// Parse MKTXP_ROUTERNAME_FIELD or MKTXP_FIELD
+		rest := key[len(envPrefix):]
+		parts := strings.SplitN(rest, "_", 2)
+
+		if len(parts) == 2 {
+			routerName, field := parts[0], parts[1]
+			matchedRouter := e.findRouterByName(routerName, routerNames)
+			if matchedRouter == "" && routerName != "*" {
+				slog.Debug("Environment variable doesn't match any router",
+					"var", key, "router", routerName)
+				continue
+			}
+			e.applyFieldOverride(h, matchedRouter, field, value)
+		} else if len(parts) == 1 {
+			// System-level env var: MKTXP_FIELD
+			e.applySystemFieldOverride(h, parts[0], value)
 		}
-
-		routerName, field := parts[0], parts[1]
-
-		matchedRouter := e.findRouterByName(routerName, routerNames)
-		if matchedRouter == "" && routerName != "*" {
-			slog.Debug("Environment variable doesn't match any router",
-				"var", key, "router", routerName)
-			continue
-		}
-
-		e.applyFieldOverride(h, matchedRouter, field, value)
 	}
 
 	return nil
@@ -71,11 +77,10 @@ func (e *EnvConfigurator) ApplySystemOverrides(h *ConfigHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	routerNames := make([]string, 0, len(h.entryCache))
-	for name := range h.entryCache {
-		routerNames = append(routerNames, name)
-	}
-	_ = routerNames // Used for consistency, though not needed here
+	e.v = viper.New()
+	e.v.SetEnvPrefix(envPrefix)
+	e.v.AutomaticEnv()
+	e.v.SetEnvKeyReplacer(strings.NewReplacer("_", "_"))
 
 	envVars := os.Environ()
 	for _, envVar := range envVars {
@@ -111,31 +116,37 @@ func (e *EnvConfigurator) applyFieldOverride(h *ConfigHandler, routerName, field
 
 	fieldLower := strings.ToLower(field)
 
+	// Handle special fields
 	switch fieldLower {
-	case "username":
-		entry.Username = value
+	case "username", "password", "hostname", "credentials_file",
+		"remote_dhcp_entry", "remote_capsman_entry", "interface_name_format":
+		*getPtrString(entry, fieldLower) = value
 		slog.Info("Applied env override",
 			"router", routerName,
 			"field", field,
 			"value", "***")
+		return
 
-	case "password":
-		entry.Password = value
-		slog.Info("Applied env override",
-			"router", routerName,
-			"field", field,
-			"value", "***")
-
-	case "hostname":
-		entry.Hostname = value
-		slog.Info("Applied env override",
-			"router", routerName,
-			"field", field,
-			"value", value)
+	case "custom_labels":
+		var labels map[string]string
+		if err := json.Unmarshal([]byte(value), &labels); err != nil {
+			slog.Warn("Failed to parse custom_labels from env",
+				"router", routerName,
+				"field", field,
+				"error", err)
+		} else {
+			if entry.CustomLabels == nil {
+				entry.CustomLabels = make(map[string]string)
+			}
+			for k, v := range labels {
+				entry.CustomLabels[k] = v
+			}
+		}
+		return
 
 	case "port":
 		if port, err := parsePort(value); err == nil {
-			entry.Port = port
+			*getPtrInt(entry, fieldLower) = port
 			slog.Info("Applied env override",
 				"router", routerName,
 				"field", field,
@@ -147,220 +158,75 @@ func (e *EnvConfigurator) applyFieldOverride(h *ConfigHandler, routerName, field
 				"value", value,
 				"error", err)
 		}
+		return
+	}
 
-	case "credentials_file":
-		entry.CredentialsFile = value
-		slog.Info("Applied env override",
-			"router", routerName,
-			"field", field,
-			"value", "***")
-
-	case "custom_labels":
-		if err := e.parseAndSetCustomLabels(entry, value); err != nil {
-			slog.Warn("Failed to parse custom_labels from env",
-				"router", routerName,
-				"field", field,
-				"error", err)
-		}
-
-	default:
-		if e.setBoolField(entry, fieldLower, value) {
+	// Handle boolean fields using field map
+	if fi, ok := routerFieldMap[fieldLower]; ok && fi.IsBool {
+		if b, err := parseBool(value); err == nil {
+			*getPtrBool(entry, fieldLower) = b
 			slog.Info("Applied env override",
 				"router", routerName,
 				"field", field,
 				"value", value)
 		} else {
-			slog.Debug("Unknown environment variable field",
+			slog.Warn("Invalid boolean value in environment variable",
 				"router", routerName,
-				"field", field)
+				"field", field,
+				"value", value,
+				"error", err)
 		}
+		return
 	}
+
+	slog.Debug("Unknown environment variable field",
+		"router", routerName,
+		"field", field)
 }
 
 // applySystemFieldOverride applies a single field override to system config.
 func (e *EnvConfigurator) applySystemFieldOverride(h *ConfigHandler, field, value string) {
 	fieldLower := strings.ToLower(field)
 
-	switch fieldLower {
-	case "listen":
-		h.sysConfig.Listen = value
-		slog.Info("Applied system env override",
-			"field", field,
-			"value", value)
-
-	case "bandwidth_test_dns_server":
-		h.sysConfig.BandwidthTestDNSServer = value
-		slog.Info("Applied system env override",
-			"field", field,
-			"value", value)
-
-	case "socket_timeout", "initial_delay_on_failure",
-		"max_delay_on_failure", "delay_inc_div",
-		"bandwidth_test_interval", "minimal_collect_interval",
-		"max_worker_threads", "max_scrape_duration",
-		"total_max_scrape_duration", "probe_connection_pool_ttl",
-		"probe_connection_pool_max_size":
-		if num, err := parseInt(value); err == nil {
-			e.setSystemIntField(h.sysConfig, fieldLower, num)
+	if fi, ok := systemFieldMap[fieldLower]; ok {
+		switch {
+		case fi.IsString:
+			h.sysConfig.Listen = value
 			slog.Info("Applied system env override",
 				"field", field,
 				"value", value)
-		} else {
-			slog.Warn("Invalid numeric value in environment variable",
-				"field", field,
-				"value", value,
-				"error", err)
+
+		case fi.IsInt:
+			if num, err := parseInt(value); err == nil {
+				e.setSystemIntField(h.sysConfig, fieldLower, num)
+				slog.Info("Applied system env override",
+					"field", field,
+					"value", value)
+			} else {
+				slog.Warn("Invalid numeric value in environment variable",
+					"field", field,
+					"value", value,
+					"error", err)
+			}
+
+		case fi.IsBool:
+			if b, err := parseBool(value); err == nil {
+				e.setSystemBoolField(h.sysConfig, fieldLower, b)
+				slog.Info("Applied system env override",
+					"field", field,
+					"value", value)
+			} else {
+				slog.Warn("Invalid boolean value in environment variable",
+					"field", field,
+					"value", value,
+					"error", err)
+			}
 		}
-
-	case "verbose_mode", "fetch_routers_in_parallel",
-		"persistent_router_connection_pool",
-		"persistent_dhcp_cache", "prometheus_headers_deduplication",
-		"probe_connection_pool":
-		if b, err := parseBool(value); err == nil {
-			e.setSystemBoolField(h.sysConfig, fieldLower, b)
-			slog.Info("Applied system env override",
-				"field", field,
-				"value", value)
-		} else {
-			slog.Warn("Invalid boolean value in environment variable",
-				"field", field,
-				"value", value,
-				"error", err)
-		}
-
-	default:
-		slog.Debug("Unknown system environment variable field",
-			"field", field)
-	}
-}
-
-// parseAndSetCustomLabels parses JSON and sets custom_labels.
-func (e *EnvConfigurator) parseAndSetCustomLabels(entry *RouterConfigEntry, value string) error {
-	if entry.CustomLabels == nil {
-		entry.CustomLabels = make(map[string]string)
+		return
 	}
 
-	var labels map[string]string
-	if err := json.Unmarshal([]byte(value), &labels); err != nil {
-		return fmt.Errorf("failed to parse JSON: %w", err)
-	}
-
-	for k, v := range labels {
-		entry.CustomLabels[k] = v
-	}
-
-	return nil
-}
-
-// setBoolField sets a boolean field on the router entry.
-func (e *EnvConfigurator) setBoolField(entry *RouterConfigEntry, field, value string) bool {
-	b, err := parseBool(value)
-	if err != nil {
-		return false
-	}
-
-	switch field {
-	case "enabled":
-		entry.Enabled = b
-	case "module_only":
-		entry.ModuleOnly = b
-	case "use_ssl":
-		entry.UseSSL = b
-	case "no_ssl_certificate":
-		entry.NoSSLCertificate = b
-	case "ssl_certificate_verify":
-		entry.SSLCertificateVerify = b
-	case "ssl_check_hostname":
-		entry.SSLCheckHostname = b
-	case "plaintext_login":
-		entry.PlaintextLogin = b
-	case "health":
-		entry.Health = b
-	case "installed_packages":
-		entry.InstalledPackages = b
-	case "dhcp":
-		entry.DHCP = b
-	case "dhcp_lease":
-		entry.DHCPLease = b
-	case "connections":
-		entry.Connections = b
-	case "connection_stats":
-		entry.ConnectionStats = b
-	case "interface":
-		entry.Interface = b
-	case "route":
-		entry.Route = b
-	case "pool":
-		entry.Pool = b
-	case "firewall":
-		entry.Firewall = b
-	case "neighbor":
-		entry.Neighbor = b
-	case "dns":
-		entry.DNS = b
-	case "ipv6_route":
-		entry.IPv6Route = b
-	case "ipv6_pool":
-		entry.IPv6Pool = b
-	case "ipv6_firewall":
-		entry.IPv6Firewall = b
-	case "ipv6_neighbor":
-		entry.IPv6Neighbor = b
-	case "poe":
-		entry.POE = b
-	case "monitor":
-		entry.Monitor = b
-	case "netwatch":
-		entry.Netwatch = b
-	case "public_ip":
-		entry.PublicIP = b
-	case "wireless":
-		entry.Wireless = b
-	case "wireless_clients":
-		entry.WirelessClients = b
-	case "capsman":
-		entry.CAPsMAN = b
-	case "capsman_clients":
-		entry.CAPsMANClients = b
-	case "w60g":
-		entry.W60G = b
-	case "eoip":
-		entry.EOIP = b
-	case "gre":
-		entry.GRE = b
-	case "ipip":
-		entry.IPIP = b
-	case "lte":
-		entry.LTE = b
-	case "ipsec":
-		entry.IPSec = b
-	case "switch_port":
-		entry.SwitchPort = b
-	case "kid_control_assigned":
-		entry.KidControlAssigned = b
-	case "kid_control_dynamic":
-		entry.KidControlDynamic = b
-	case "user":
-		entry.User = b
-	case "queue":
-		entry.Queue = b
-	case "bfd":
-		entry.BFD = b
-	case "bgp":
-		entry.BGP = b
-	case "routing_stats":
-		entry.RoutingStats = b
-	case "certificate":
-		entry.Certificate = b
-	case "container":
-		entry.Container = b
-	case "check_for_updates":
-		entry.CheckForUpdates = b
-	default:
-		return false
-	}
-
-	return true
+	slog.Debug("Unknown system environment variable field",
+		"field", field)
 }
 
 // setSystemIntField sets an integer field on the system config.
@@ -407,6 +273,99 @@ func (e *EnvConfigurator) setSystemBoolField(sc *SystemConfig, field string, val
 	case "probe_connection_pool":
 		sc.ProbeConnectionPool = value
 	}
+}
+
+// fieldPointer is a helper type for field pointer functions.
+type fieldPointer[T any] func(*RouterConfigEntry) *T
+
+// routerFieldPointers maps field names to their pointer functions.
+var routerFieldPointers = map[string]fieldPointer[bool]{
+	"enabled":                func(e *RouterConfigEntry) *bool { return &e.Enabled },
+	"module_only":            func(e *RouterConfigEntry) *bool { return &e.ModuleOnly },
+	"use_ssl":                func(e *RouterConfigEntry) *bool { return &e.UseSSL },
+	"no_ssl_certificate":     func(e *RouterConfigEntry) *bool { return &e.NoSSLCertificate },
+	"ssl_certificate_verify": func(e *RouterConfigEntry) *bool { return &e.SSLCertificateVerify },
+	"ssl_check_hostname":     func(e *RouterConfigEntry) *bool { return &e.SSLCheckHostname },
+	"plaintext_login":        func(e *RouterConfigEntry) *bool { return &e.PlaintextLogin },
+	"health":                 func(e *RouterConfigEntry) *bool { return &e.Health },
+	"installed_packages":     func(e *RouterConfigEntry) *bool { return &e.InstalledPackages },
+	"dhcp":                   func(e *RouterConfigEntry) *bool { return &e.DHCP },
+	"dhcp_lease":             func(e *RouterConfigEntry) *bool { return &e.DHCPLease },
+	"connections":            func(e *RouterConfigEntry) *bool { return &e.Connections },
+	"connection_stats":       func(e *RouterConfigEntry) *bool { return &e.ConnectionStats },
+	"interface":              func(e *RouterConfigEntry) *bool { return &e.Interface },
+	"route":                  func(e *RouterConfigEntry) *bool { return &e.Route },
+	"pool":                   func(e *RouterConfigEntry) *bool { return &e.Pool },
+	"firewall":               func(e *RouterConfigEntry) *bool { return &e.Firewall },
+	"neighbor":               func(e *RouterConfigEntry) *bool { return &e.Neighbor },
+	"dns":                    func(e *RouterConfigEntry) *bool { return &e.DNS },
+	"ipv6_route":             func(e *RouterConfigEntry) *bool { return &e.IPv6Route },
+	"ipv6_pool":              func(e *RouterConfigEntry) *bool { return &e.IPv6Pool },
+	"ipv6_firewall":          func(e *RouterConfigEntry) *bool { return &e.IPv6Firewall },
+	"ipv6_neighbor":          func(e *RouterConfigEntry) *bool { return &e.IPv6Neighbor },
+	"poe":                    func(e *RouterConfigEntry) *bool { return &e.POE },
+	"monitor":                func(e *RouterConfigEntry) *bool { return &e.Monitor },
+	"netwatch":               func(e *RouterConfigEntry) *bool { return &e.Netwatch },
+	"public_ip":              func(e *RouterConfigEntry) *bool { return &e.PublicIP },
+	"wireless":               func(e *RouterConfigEntry) *bool { return &e.Wireless },
+	"wireless_clients":       func(e *RouterConfigEntry) *bool { return &e.WirelessClients },
+	"capsman":                func(e *RouterConfigEntry) *bool { return &e.CAPsMAN },
+	"capsman_clients":        func(e *RouterConfigEntry) *bool { return &e.CAPsMANClients },
+	"w60g":                   func(e *RouterConfigEntry) *bool { return &e.W60G },
+	"eoip":                   func(e *RouterConfigEntry) *bool { return &e.EOIP },
+	"gre":                    func(e *RouterConfigEntry) *bool { return &e.GRE },
+	"ipip":                   func(e *RouterConfigEntry) *bool { return &e.IPIP },
+	"lte":                    func(e *RouterConfigEntry) *bool { return &e.LTE },
+	"ipsec":                  func(e *RouterConfigEntry) *bool { return &e.IPSec },
+	"switch_port":            func(e *RouterConfigEntry) *bool { return &e.SwitchPort },
+	"kid_control_assigned":   func(e *RouterConfigEntry) *bool { return &e.KidControlAssigned },
+	"kid_control_dynamic":    func(e *RouterConfigEntry) *bool { return &e.KidControlDynamic },
+	"user":                   func(e *RouterConfigEntry) *bool { return &e.User },
+	"queue":                  func(e *RouterConfigEntry) *bool { return &e.Queue },
+	"bfd":                    func(e *RouterConfigEntry) *bool { return &e.BFD },
+	"bgp":                    func(e *RouterConfigEntry) *bool { return &e.BGP },
+	"routing_stats":          func(e *RouterConfigEntry) *bool { return &e.RoutingStats },
+	"certificate":            func(e *RouterConfigEntry) *bool { return &e.Certificate },
+	"container":              func(e *RouterConfigEntry) *bool { return &e.Container },
+	"check_for_updates":      func(e *RouterConfigEntry) *bool { return &e.CheckForUpdates },
+}
+
+var routerStringFieldPointers = map[string]fieldPointer[string]{
+	"hostname":              func(e *RouterConfigEntry) *string { return &e.Hostname },
+	"username":              func(e *RouterConfigEntry) *string { return &e.Username },
+	"password":              func(e *RouterConfigEntry) *string { return &e.Password },
+	"credentials_file":      func(e *RouterConfigEntry) *string { return &e.CredentialsFile },
+	"remote_dhcp_entry":     func(e *RouterConfigEntry) *string { return &e.RemoteDHCPEntry },
+	"remote_capsman_entry":  func(e *RouterConfigEntry) *string { return &e.RemoteCAPsMANEntry },
+	"interface_name_format": func(e *RouterConfigEntry) *string { return &e.InterfaceNameFormat },
+}
+
+var routerIntFieldPointers = map[string]fieldPointer[int]{
+	"port": func(e *RouterConfigEntry) *int { return &e.Port },
+}
+
+// getPtrBool returns a pointer to a boolean field by name.
+func getPtrBool(e *RouterConfigEntry, fieldName string) *bool {
+	if fn, ok := routerFieldPointers[fieldName]; ok {
+		return fn(e)
+	}
+	return nil
+}
+
+// getPtrString returns a pointer to a string field by name.
+func getPtrString(e *RouterConfigEntry, fieldName string) *string {
+	if fn, ok := routerStringFieldPointers[fieldName]; ok {
+		return fn(e)
+	}
+	return nil
+}
+
+// getPtrInt returns a pointer to an int field by name.
+func getPtrInt(e *RouterConfigEntry, fieldName string) *int {
+	if fn, ok := routerIntFieldPointers[fieldName]; ok {
+		return fn(e)
+	}
+	return nil
 }
 
 // parsePort parses a string to an integer port number.

@@ -94,15 +94,16 @@ func (c *MonitorCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 			if val, ok := rec[key]; ok && val != "" {
 				var value float64
 				if meta.parseFloat {
-					if key == "rate" {
+					switch key {
+					case "rate":
 						if v, ok := ratesMbps[val]; ok {
 							value = v
 						} else {
 							value = ParseFloat(val)
 						}
-					} else if key == "sfp_tx_bias_current" {
+					case "sfp_tx_bias_current":
 						value = ParseFloat(val) / 1000
-					} else {
+					default:
 						value = ParseFloat(val)
 					}
 				} else {

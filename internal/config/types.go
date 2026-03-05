@@ -1,5 +1,9 @@
 package config
 
+import (
+	"reflect"
+)
+
 // RouterConfigEntry holds the fully-resolved configuration for a single router entry.
 type RouterConfigEntry struct {
 	Enabled              bool              `yaml:"enabled"`
@@ -155,7 +159,106 @@ type rawEntry struct {
 	CheckForUpdates      *bool             `yaml:"check_for_updates"`
 }
 
-// hardcodedDefaults returns the baseline RouterConfigEntry with default values,
+// FieldInfo describes a configurable field.
+type FieldInfo struct {
+	Name     string
+	YAMLTag  string
+	IsBool   bool
+	IsInt    bool
+	IsString bool
+	IsSlice  bool
+	IsMap    bool
+}
+
+// routerFieldMap maps YAML field names to RouterConfigEntry fields.
+var routerFieldMap = map[string]FieldInfo{
+	"enabled":                {"Enabled", "enabled", true, false, false, false, false},
+	"module_only":            {"ModuleOnly", "module_only", true, false, false, false, false},
+	"hostname":               {"Hostname", "hostname", false, false, true, false, false},
+	"port":                   {"Port", "port", false, true, false, false, false},
+	"username":               {"Username", "username", false, false, true, false, false},
+	"password":               {"Password", "password", false, false, true, false, false},
+	"credentials_file":       {"CredentialsFile", "credentials_file", false, false, true, false, false},
+	"custom_labels":          {"CustomLabels", "custom_labels", false, false, false, false, true},
+	"use_ssl":                {"UseSSL", "use_ssl", true, false, false, false, false},
+	"no_ssl_certificate":     {"NoSSLCertificate", "no_ssl_certificate", true, false, false, false, false},
+	"ssl_certificate_verify": {"SSLCertificateVerify", "ssl_certificate_verify", true, false, false, false, false},
+	"ssl_check_hostname":     {"SSLCheckHostname", "ssl_check_hostname", true, false, false, false, false},
+	"ssl_ca_file":            {"SSLCAFile", "ssl_ca_file", false, false, true, false, false},
+	"plaintext_login":        {"PlaintextLogin", "plaintext_login", true, false, false, false, false},
+	"health":                 {"Health", "health", true, false, false, false, false},
+	"installed_packages":     {"InstalledPackages", "installed_packages", true, false, false, false, false},
+	"dhcp":                   {"DHCP", "dhcp", true, false, false, false, false},
+	"dhcp_lease":             {"DHCPLease", "dhcp_lease", true, false, false, false, false},
+	"connections":            {"Connections", "connections", true, false, false, false, false},
+	"connection_stats":       {"ConnectionStats", "connection_stats", true, false, false, false, false},
+	"interface":              {"Interface", "interface", true, false, false, false, false},
+	"route":                  {"Route", "route", true, false, false, false, false},
+	"pool":                   {"Pool", "pool", true, false, false, false, false},
+	"firewall":               {"Firewall", "firewall", true, false, false, false, false},
+	"address_list":           {"AddressList", "address_list", false, false, false, true, false},
+	"neighbor":               {"Neighbor", "neighbor", true, false, false, false, false},
+	"dns":                    {"DNS", "dns", true, false, false, false, false},
+	"ipv6_route":             {"IPv6Route", "ipv6_route", true, false, false, false, false},
+	"ipv6_pool":              {"IPv6Pool", "ipv6_pool", true, false, false, false, false},
+	"ipv6_firewall":          {"IPv6Firewall", "ipv6_firewall", true, false, false, false, false},
+	"ipv6_neighbor":          {"IPv6Neighbor", "ipv6_neighbor", true, false, false, false, false},
+	"ipv6_address_list":      {"IPv6AddressList", "ipv6_address_list", false, false, false, true, false},
+	"poe":                    {"POE", "poe", true, false, false, false, false},
+	"monitor":                {"Monitor", "monitor", true, false, false, false, false},
+	"netwatch":               {"Netwatch", "netwatch", true, false, false, false, false},
+	"public_ip":              {"PublicIP", "public_ip", true, false, false, false, false},
+	"wireless":               {"Wireless", "wireless", true, false, false, false, false},
+	"wireless_clients":       {"WirelessClients", "wireless_clients", true, false, false, false, false},
+	"capsman":                {"CAPsMAN", "capsman", true, false, false, false, false},
+	"capsman_clients":        {"CAPsMANClients", "capsman_clients", true, false, false, false, false},
+	"w60g":                   {"W60G", "w60g", true, false, false, false, false},
+	"eoip":                   {"EOIP", "eoip", true, false, false, false, false},
+	"gre":                    {"GRE", "gre", true, false, false, false, false},
+	"ipip":                   {"IPIP", "ipip", true, false, false, false, false},
+	"lte":                    {"LTE", "lte", true, false, false, false, false},
+	"ipsec":                  {"IPSec", "ipsec", true, false, false, false, false},
+	"switch_port":            {"SwitchPort", "switch_port", true, false, false, false, false},
+	"kid_control_assigned":   {"KidControlAssigned", "kid_control_assigned", true, false, false, false, false},
+	"kid_control_dynamic":    {"KidControlDynamic", "kid_control_dynamic", true, false, false, false, false},
+	"user":                   {"User", "user", true, false, false, false, false},
+	"queue":                  {"Queue", "queue", true, false, false, false, false},
+	"bfd":                    {"BFD", "bfd", true, false, false, false, false},
+	"bgp":                    {"BGP", "bgp", true, false, false, false, false},
+	"routing_stats":          {"RoutingStats", "routing_stats", true, false, false, false, false},
+	"certificate":            {"Certificate", "certificate", true, false, false, false, false},
+	"container":              {"Container", "container", true, false, false, false, false},
+	"remote_dhcp_entry":      {"RemoteDHCPEntry", "remote_dhcp_entry", false, false, true, false, false},
+	"remote_capsman_entry":   {"RemoteCAPsMANEntry", "remote_capsman_entry", false, false, true, false, false},
+	"interface_name_format":  {"InterfaceNameFormat", "interface_name_format", false, false, true, false, false},
+	"check_for_updates":      {"CheckForUpdates", "check_for_updates", true, false, false, false, false},
+}
+
+// systemFieldMap maps YAML field names to SystemConfig fields.
+var systemFieldMap = map[string]FieldInfo{
+	"listen":                            {"Listen", "listen", false, false, true, false, false},
+	"socket_timeout":                    {"SocketTimeout", "socket_timeout", false, true, false, false, false},
+	"initial_delay_on_failure":          {"InitialDelayOnFailure", "initial_delay_on_failure", false, true, false, false, false},
+	"max_delay_on_failure":              {"MaxDelayOnFailure", "max_delay_on_failure", false, true, false, false, false},
+	"delay_inc_div":                     {"DelayIncDiv", "delay_inc_div", false, true, false, false, false},
+	"bandwidth":                         {"Bandwidth", "bandwidth", true, false, false, false, false},
+	"bandwidth_test_dns_server":         {"BandwidthTestDNSServer", "bandwidth_test_dns_server", false, false, true, false, false},
+	"bandwidth_test_interval":           {"BandwidthTestInterval", "bandwidth_test_interval", false, true, false, false, false},
+	"minimal_collect_interval":          {"MinimalCollectInterval", "minimal_collect_interval", false, true, false, false, false},
+	"verbose_mode":                      {"VerboseMode", "verbose_mode", true, false, false, false, false},
+	"fetch_routers_in_parallel":         {"FetchRoutersInParallel", "fetch_routers_in_parallel", true, false, false, false, false},
+	"max_worker_threads":                {"MaxWorkerThreads", "max_worker_threads", false, true, false, false, false},
+	"max_scrape_duration":               {"MaxScrapeDuration", "max_scrape_duration", false, true, false, false, false},
+	"total_max_scrape_duration":         {"TotalMaxScrapeDuration", "total_max_scrape_duration", false, true, false, false, false},
+	"persistent_router_connection_pool": {"PersistentRouterConnectionPool", "persistent_router_connection_pool", true, false, false, false, false},
+	"persistent_dhcp_cache":             {"PersistentDHCPCache", "persistent_dhcp_cache", true, false, false, false, false},
+	"prometheus_headers_deduplication":  {"PrometheusHeadersDeduplication", "prometheus_headers_deduplication", true, false, false, false, false},
+	"probe_connection_pool":             {"ProbeConnectionPool", "probe_connection_pool", true, false, false, false, false},
+	"probe_connection_pool_ttl":         {"ProbeConnectionPoolTTL", "probe_connection_pool_ttl", false, true, false, false, false},
+	"probe_connection_pool_max_size":    {"ProbeConnectionPoolMaxSize", "probe_connection_pool_max_size", false, true, false, false, false},
+}
+
+// hardcodedDefaults returns the baseline RouterConfigEntry with default values.
 func hardcodedDefaults() RouterConfigEntry {
 	return RouterConfigEntry{
 		Enabled:              true,
@@ -289,8 +392,6 @@ func applySystemDefaults(sc SystemConfig) SystemConfig {
 	if sc.ProbeConnectionPoolMaxSize == 0 {
 		sc.ProbeConnectionPoolMaxSize = d.ProbeConnectionPoolMaxSize
 	}
-	// Note: boolean fields default to false in Go, which is correct for most system booleans.
-	// The ones that default to true are handled explicitly:
 	if !sc.PersistentRouterConnectionPool {
 		sc.PersistentRouterConnectionPool = d.PersistentRouterConnectionPool
 	}
@@ -306,188 +407,51 @@ func mergeWithDefaults(def rawEntry) RouterConfigEntry {
 	return mergeEntry(base, def)
 }
 
-// mergeEntry applies override values from raw onto base, returning the merged result.
+// mergeEntry merges a rawEntry into a RouterConfigEntry, using reflection.
 func mergeEntry(base RouterConfigEntry, raw rawEntry) RouterConfigEntry {
-	r := base // copy
-	if raw.Enabled != nil {
-		r.Enabled = *raw.Enabled
+	baseVal := reflect.ValueOf(&base).Elem()
+	rawVal := reflect.ValueOf(&raw).Elem()
+
+	baseType := baseVal.Type()
+
+	for i := 0; i < baseVal.NumField(); i++ {
+		fieldName := baseType.Field(i).Name
+		rawField := rawVal.FieldByName(fieldName)
+
+		if !rawField.IsValid() {
+			continue
+		}
+
+		val := rawField.Interface()
+		switch v := val.(type) {
+		case *bool:
+			if v != nil {
+				baseVal.Field(i).SetBool(*v)
+			}
+		case *string:
+			if v != nil {
+				baseVal.Field(i).SetString(*v)
+			}
+		case *int:
+			if v != nil {
+				baseVal.Field(i).SetInt(int64(*v))
+			}
+		case map[string]string:
+			if v != nil {
+				mapVal := reflect.MakeMap(reflect.TypeOf(map[string]string{}))
+				for k, vv := range v {
+					mapVal.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(vv))
+				}
+				baseVal.Field(i).Set(mapVal)
+			}
+		case []string:
+			if v != nil {
+				slice := reflect.MakeSlice(baseVal.Field(i).Type(), len(v), len(v))
+				reflect.Copy(slice, reflect.ValueOf(v))
+				baseVal.Field(i).Set(slice)
+			}
+		}
 	}
-	if raw.ModuleOnly != nil {
-		r.ModuleOnly = *raw.ModuleOnly
-	}
-	if raw.Hostname != nil {
-		r.Hostname = *raw.Hostname
-	}
-	if raw.Port != nil {
-		r.Port = *raw.Port
-	}
-	if raw.Username != nil {
-		r.Username = *raw.Username
-	}
-	if raw.Password != nil {
-		r.Password = *raw.Password
-	}
-	if raw.CredentialsFile != nil {
-		r.CredentialsFile = *raw.CredentialsFile
-	}
-	if raw.CustomLabels != nil {
-		r.CustomLabels = raw.CustomLabels
-	}
-	if raw.UseSSL != nil {
-		r.UseSSL = *raw.UseSSL
-	}
-	if raw.NoSSLCertificate != nil {
-		r.NoSSLCertificate = *raw.NoSSLCertificate
-	}
-	if raw.SSLCertificateVerify != nil {
-		r.SSLCertificateVerify = *raw.SSLCertificateVerify
-	}
-	if raw.SSLCheckHostname != nil {
-		r.SSLCheckHostname = *raw.SSLCheckHostname
-	}
-	if raw.SSLCAFile != nil {
-		r.SSLCAFile = *raw.SSLCAFile
-	}
-	if raw.PlaintextLogin != nil {
-		r.PlaintextLogin = *raw.PlaintextLogin
-	}
-	if raw.Health != nil {
-		r.Health = *raw.Health
-	}
-	if raw.InstalledPackages != nil {
-		r.InstalledPackages = *raw.InstalledPackages
-	}
-	if raw.DHCP != nil {
-		r.DHCP = *raw.DHCP
-	}
-	if raw.DHCPLease != nil {
-		r.DHCPLease = *raw.DHCPLease
-	}
-	if raw.Connections != nil {
-		r.Connections = *raw.Connections
-	}
-	if raw.ConnectionStats != nil {
-		r.ConnectionStats = *raw.ConnectionStats
-	}
-	if raw.Interface != nil {
-		r.Interface = *raw.Interface
-	}
-	if raw.Route != nil {
-		r.Route = *raw.Route
-	}
-	if raw.Pool != nil {
-		r.Pool = *raw.Pool
-	}
-	if raw.Firewall != nil {
-		r.Firewall = *raw.Firewall
-	}
-	if raw.AddressList != nil {
-		r.AddressList = raw.AddressList
-	}
-	if raw.Neighbor != nil {
-		r.Neighbor = *raw.Neighbor
-	}
-	if raw.DNS != nil {
-		r.DNS = *raw.DNS
-	}
-	if raw.IPv6Route != nil {
-		r.IPv6Route = *raw.IPv6Route
-	}
-	if raw.IPv6Pool != nil {
-		r.IPv6Pool = *raw.IPv6Pool
-	}
-	if raw.IPv6Firewall != nil {
-		r.IPv6Firewall = *raw.IPv6Firewall
-	}
-	if raw.IPv6Neighbor != nil {
-		r.IPv6Neighbor = *raw.IPv6Neighbor
-	}
-	if raw.IPv6AddressList != nil {
-		r.IPv6AddressList = raw.IPv6AddressList
-	}
-	if raw.POE != nil {
-		r.POE = *raw.POE
-	}
-	if raw.Monitor != nil {
-		r.Monitor = *raw.Monitor
-	}
-	if raw.Netwatch != nil {
-		r.Netwatch = *raw.Netwatch
-	}
-	if raw.PublicIP != nil {
-		r.PublicIP = *raw.PublicIP
-	}
-	if raw.Wireless != nil {
-		r.Wireless = *raw.Wireless
-	}
-	if raw.WirelessClients != nil {
-		r.WirelessClients = *raw.WirelessClients
-	}
-	if raw.CAPsMAN != nil {
-		r.CAPsMAN = *raw.CAPsMAN
-	}
-	if raw.CAPsMANClients != nil {
-		r.CAPsMANClients = *raw.CAPsMANClients
-	}
-	if raw.W60G != nil {
-		r.W60G = *raw.W60G
-	}
-	if raw.EOIP != nil {
-		r.EOIP = *raw.EOIP
-	}
-	if raw.GRE != nil {
-		r.GRE = *raw.GRE
-	}
-	if raw.IPIP != nil {
-		r.IPIP = *raw.IPIP
-	}
-	if raw.LTE != nil {
-		r.LTE = *raw.LTE
-	}
-	if raw.IPSec != nil {
-		r.IPSec = *raw.IPSec
-	}
-	if raw.SwitchPort != nil {
-		r.SwitchPort = *raw.SwitchPort
-	}
-	if raw.KidControlAssigned != nil {
-		r.KidControlAssigned = *raw.KidControlAssigned
-	}
-	if raw.KidControlDynamic != nil {
-		r.KidControlDynamic = *raw.KidControlDynamic
-	}
-	if raw.User != nil {
-		r.User = *raw.User
-	}
-	if raw.Queue != nil {
-		r.Queue = *raw.Queue
-	}
-	if raw.BFD != nil {
-		r.BFD = *raw.BFD
-	}
-	if raw.BGP != nil {
-		r.BGP = *raw.BGP
-	}
-	if raw.RoutingStats != nil {
-		r.RoutingStats = *raw.RoutingStats
-	}
-	if raw.Certificate != nil {
-		r.Certificate = *raw.Certificate
-	}
-	if raw.Container != nil {
-		r.Container = *raw.Container
-	}
-	if raw.RemoteDHCPEntry != nil {
-		r.RemoteDHCPEntry = *raw.RemoteDHCPEntry
-	}
-	if raw.RemoteCAPsMANEntry != nil {
-		r.RemoteCAPsMANEntry = *raw.RemoteCAPsMANEntry
-	}
-	if raw.InterfaceNameFormat != nil {
-		r.InterfaceNameFormat = *raw.InterfaceNameFormat
-	}
-	if raw.CheckForUpdates != nil {
-		r.CheckForUpdates = *raw.CheckForUpdates
-	}
-	return r
+
+	return base
 }
