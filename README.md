@@ -11,6 +11,7 @@ MKTXP collects metrics from Mikrotik RouterOS devices and exports them in Promet
 - **Secure Connections**: Support for TLS/SSL with certificate verification
 - **Automatic Reconnection**: Built-in backoff and retry logic for failed connections
 - **YAML Configuration**: Easy configuration with YAML files and template support
+- **Environment Variable Overrides**: Override configuration via environment variables
 
 ## Installation
 
@@ -161,6 +162,32 @@ Global Flags:
 - `--cfg-dir string` - Configuration directory (default `~/mktxp`)
 
 ## Configuration
+
+### Environment Variable Overrides
+
+Configuration can be overridden using environment variables. Environment variables take priority over YAML config and credentials files.
+
+**Router-specific overrides** (format: `MKTXP_{ROUTERNAME}_{FIELD}`):
+```bash
+export MKTXP_MyRouter_USERNAME=override_user
+export MKTXP_MyRouter_PASSWORD=override_password
+export MKTXP_MyRouter_PORT=8729
+export MKTXP_MyRouter_HEALTH=false
+export MKTXP_MyRouter_CUSTOM_LABELS='{"region":"us-west","team":"network"}'
+```
+
+**System config overrides** (format: `MKTXP_{FIELD}`):
+```bash
+export MKTXP_LISTEN=0.0.0.0:49091
+export MKTXP_MAX_WORKER_THREADS=10
+export MKTXP_VERBOSE_MODE=true
+```
+
+**Notes:**
+- Router names are matched case-insensitively
+- Boolean fields accept: `true`, `false`, `1`, `0`, `yes`, `no`
+- Custom labels must be valid JSON
+- Invalid values are ignored (original config preserved)
 
 ### System Configuration (`_mktxp.yaml`)
 
