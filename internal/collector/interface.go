@@ -50,19 +50,19 @@ func (c *InterfaceCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 		help       string
 		parseFloat bool
 	}{
-		"running":  {"interface_running", "Current running status of the interface", false},
-		"disabled": {"interface_disabled", "Current disabled status of the interface", false},
+		"running":  {"running", "Current running status of the interface", false},
+		"disabled": {"disabled", "Current disabled status of the interface", false},
 	}
 
 	metricCounters := map[string]string{
-		"rx_byte":    "interface_rx_byte",
-		"tx_byte":    "interface_tx_byte",
-		"rx_packet":  "interface_rx_packet",
-		"tx_packet":  "interface_tx_packet",
-		"rx_error":   "interface_rx_error",
-		"tx_error":   "interface_tx_error",
-		"rx_drop":    "interface_rx_drop",
-		"tx_drop":    "interface_tx_drop",
+		"rx_byte":    "rx_bytes",
+		"tx_byte":    "tx_bytes",
+		"rx_packet":  "rx_packets",
+		"tx_packet":  "tx_packets",
+		"rx_error":   "rx_errors",
+		"tx_error":   "tx_errors",
+		"rx_drop":    "rx_drop",
+		"tx_drop":    "tx_drop",
 		"link_downs": "link_downs",
 	}
 

@@ -101,7 +101,7 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "certificate_info", "Information about certificate",
+			mb.Info(ch, "certificate_expiration_timestamp_seconds", "Information about certificate",
 				[]string{"name", "common_name", "issuer", "key_type"}, rec)
 		}
 	}

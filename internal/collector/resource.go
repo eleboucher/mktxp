@@ -50,13 +50,13 @@ func (c *SystemResourceCollector) Collect(ctx context.Context, e *entry.RouterEn
 		float64(utils.ParseMktUptime(record["uptime"])),
 		sharedLabels, sharedVals,
 	)
-	mb.Gauge(ch, "system_free_memory", "Unused amount of RAM", "free_memory", sharedLabels, record)
-	mb.Gauge(ch, "system_total_memory", "Amount of installed RAM", "total_memory", sharedLabels, record)
-	mb.Gauge(ch, "system_free_hdd_space", "Free space on hard drive or NAND", "free_hdd_space", sharedLabels, record)
-	mb.Gauge(ch, "system_total_hdd_space", "Size of the hard drive or NAND", "total_hdd_space", sharedLabels, record)
-	mb.Gauge(ch, "system_cpu_load", "Percentage of used CPU resources", "cpu_load", sharedLabels, record)
-	mb.Gauge(ch, "system_cpu_count", "Number of CPUs present on the system", "cpu_count", sharedLabels, record)
-	mb.Gauge(ch, "system_cpu_frequency", "Current CPU frequency", "cpu_frequency", sharedLabels, record)
+	mb.Gauge(ch, "free_memory", "Unused amount of RAM", "free_memory", sharedLabels, record)
+	mb.Gauge(ch, "total_memory", "Amount of installed RAM", "total_memory", sharedLabels, record)
+	mb.Gauge(ch, "free_hdd_space", "Free space on hard drive or NAND", "free_hdd_space", sharedLabels, record)
+	mb.Gauge(ch, "total_hdd_space", "Size of the hard drive or NAND", "total_hdd_space", sharedLabels, record)
+	mb.Gauge(ch, "cpu_load", "Percentage of used CPU resources", "cpu_load", sharedLabels, record)
+	mb.Gauge(ch, "cpu_count", "Number of CPUs present on the system", "cpu_count", sharedLabels, record)
+	mb.Gauge(ch, "cpu_frequency", "Current CPU frequency", "cpu_frequency", sharedLabels, record)
 
 	return nil
 }

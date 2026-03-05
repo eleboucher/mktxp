@@ -36,7 +36,7 @@ func (c *IdentityCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	record := TrimRecord(records[0], []string{"name"})
 
 	mb := NewMetricBuilder(e)
-	mb.Info(ch, "system_identity", "System identity", []string{"name"}, record)
+	mb.Info(ch, "identity", "System identity", []string{"name"}, record)
 
 	return nil
 }

@@ -200,6 +200,7 @@ func (rc *routerCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
+	start := time.Now()
 	ctx := context.Background()
 	if err := rc.collector.Collect(ctx, rc.entry, ch); err != nil {
 		routerName := "unknown"
@@ -208,4 +209,22 @@ func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 		slog.Error("Collector failed", "collector", rc.collector.Name(), "router", routerName, "error", err)
 	}
+	duration := time.Since(start).Milliseconds()
+	metricDesc := prometheus.NewDesc(
+		"mktxp_collection_time_total",
+		"Total time spent collecting metrics in milliseconds",
+		[]string{"collector", "router_id"},
+		nil,
+	)
+	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.CounterValue, float64(duration), rc.collector.Name(), rc.getRouterID())
+}
+
+func (rc *routerCollector) getRouterID() string {
+	if rc.entry != nil {
+		if routerID, ok := rc.entry.RouterID["router_id"]; ok {
+			return routerID
+		}
+		return rc.entry.RouterName
+	}
+	return "unknown"
 }
