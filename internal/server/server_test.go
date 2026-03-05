@@ -32,13 +32,22 @@ func newTestServer(t *testing.T) *Server {
 		TotalMaxScrapeDuration:         90,
 		PersistentRouterConnectionPool: true,
 		PersistentDHCPCache:            true,
-		PrometheusHeadersDeduplication: false,
 		ProbeConnectionPool:            false,
 		ProbeConnectionPoolTTL:         300,
 		ProbeConnectionPoolMaxSize:     128,
 	}
 
 	s := New(sysCfg, nil)
+
+	config.Handler.RegisterTestSystemConfig(sysCfg)
+	config.Handler.RegisterTestRouterEntry("test-router", &config.RouterConfigEntry{
+		Hostname: "127.0.0.1",
+		Port:     8728,
+		Username: "admin",
+		Password: "password",
+		Enabled:  true,
+	})
+
 	return s
 }
 
@@ -137,6 +146,7 @@ func (c *testCollector) Describe(ch chan<- *prometheus.Desc) {
 	desc := prometheus.NewDesc("test_metric", "Test metric", nil, nil)
 	ch <- desc
 }
+
 func (c *testCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch chan<- prometheus.Metric) error {
 	ch <- prometheus.MustNewConstMetric(
 		prometheus.NewDesc("test_metric", "Test metric", nil, nil),
@@ -151,6 +161,7 @@ func TestHandleMetrics_Returns200WithHealthUp(t *testing.T) {
 
 	s := newTestServer(t)
 	s.RegisterCollector(&testCollector{})
+	s.initEntries()
 	s.registerRoutes()
 
 	if s.httpServer.Handler == nil {
@@ -195,7 +206,6 @@ func TestOptionsListenOverride(t *testing.T) {
 		TotalMaxScrapeDuration:         90,
 		PersistentRouterConnectionPool: true,
 		PersistentDHCPCache:            true,
-		PrometheusHeadersDeduplication: false,
 		ProbeConnectionPool:            false,
 		ProbeConnectionPoolTTL:         300,
 		ProbeConnectionPoolMaxSize:     128,

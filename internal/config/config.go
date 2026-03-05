@@ -157,6 +157,13 @@ func (h *ConfigHandler) SystemEntry() *SystemConfig {
 	return h.sysConfig
 }
 
+// RegisterTestSystemConfig sets the system config for testing purposes.
+func (h *ConfigHandler) RegisterTestSystemConfig(cfg *SystemConfig) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sysConfig = cfg
+}
+
 // RouterEntry returns the merged config entry for the named router.
 // Returns nil if not found.
 func (h *ConfigHandler) RouterEntry(name string) *RouterConfigEntry {
@@ -195,6 +202,27 @@ func (h *ConfigHandler) ConfigDir() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.cfgDir
+}
+
+// RegisterTestRouterEntry adds a router entry for testing purposes.
+func (h *ConfigHandler) RegisterTestRouterEntry(name string, cfg *RouterConfigEntry) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.mainConfig == nil {
+		h.mainConfig = &mainConfigFile{Routers: make(map[string]rawEntry)}
+	}
+	if h.entryCache == nil {
+		h.entryCache = make(map[string]*RouterConfigEntry)
+	}
+	h.entryCache[name] = cfg
+	h.mainConfig.Routers[name] = rawEntry{
+		Hostname: &cfg.Hostname,
+		Port:     &cfg.Port,
+		Username: &cfg.Username,
+		Password: &cfg.Password,
+		Enabled:  &cfg.Enabled,
+		UseSSL:   &cfg.UseSSL,
+	}
 }
 
 // Reload re-reads all config files from disk.

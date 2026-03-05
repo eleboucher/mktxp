@@ -16,11 +16,13 @@ import (
 )
 
 type Server struct {
-	config     *config.SystemConfig
-	registry   *collector.Registry
-	httpServer *http.Server
-	entries    map[string]*entry.RouterEntry
-	mu         sync.RWMutex
+	config       *config.SystemConfig
+	registry     *collector.Registry
+	httpServer   *http.Server
+	entries      map[string]*entry.RouterEntry
+	mu           sync.RWMutex
+	semaphore    chan struct{}
+	totalTimeout time.Duration
 }
 
 type Options struct {
@@ -33,10 +35,17 @@ func New(cfg *config.SystemConfig, opts *Options) *Server {
 		listen = opts.ListenOverride
 	}
 
+	semSize := cfg.MaxWorkerThreads
+	if semSize <= 0 {
+		semSize = 5
+	}
+
 	return &Server{
-		config:   cfg,
-		registry: collector.NewRegistry(),
-		entries:  make(map[string]*entry.RouterEntry),
+		config:       cfg,
+		registry:     collector.NewRegistry(),
+		entries:      make(map[string]*entry.RouterEntry),
+		semaphore:    make(chan struct{}, semSize),
+		totalTimeout: time.Duration(cfg.TotalMaxScrapeDuration) * time.Second,
 		httpServer: &http.Server{
 			Addr: listen,
 		},
@@ -96,25 +105,14 @@ func (s *Server) registerRoutes() {
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	_, err := fmt.Fprintf(w, "MKTXP - Mikrotik RouterOS Prometheus Exporter\n\n")
-	if err != nil {
+	const msg = `MKTXP - Mikrotik RouterOS Prometheus Exporter
+
+Endpoints:
+  /metrics  - All router metrics
+  /probe    - Target-specific metrics (use ?target=<router>)
+`
+	if _, err := w.Write([]byte(msg)); err != nil {
 		slog.Error("Failed to write root response", "error", err)
-		return
-	}
-	_, err = fmt.Fprintf(w, "Endpoints:\n")
-	if err != nil {
-		slog.Error("Failed to write root response", "error", err)
-		return
-	}
-	_, err = fmt.Fprintf(w, "  /metrics  - All router metrics\n")
-	if err != nil {
-		slog.Error("Failed to write root response", "error", err)
-		return
-	}
-	_, err = fmt.Fprintf(w, "  /probe    - Target-specific metrics (use ?target=<router>)\n")
-	if err != nil {
-		slog.Error("Failed to write root response", "error", err)
-		return
 	}
 }
 
@@ -127,22 +125,52 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 
+	totalCtx, cancel := context.WithTimeout(r.Context(), s.totalTimeout)
+	defer cancel()
+
 	registry := prometheus.NewRegistry()
 	if s.registry != nil {
 		allCollectors := s.registry.All()
 		slog.Debug("Registering collectors", "num_collectors", len(allCollectors))
 
+		var wg sync.WaitGroup
 		for _, e := range entries {
 			if e == nil {
 				slog.Warn("Entry is nil, skipping")
 				continue
 			}
-			e.Connect(r.Context())
 
-			for _, c := range allCollectors {
-				registry.MustRegister(&routerCollector{collector: c, entry: e})
+			select {
+			case s.semaphore <- struct{}{}:
+			case <-totalCtx.Done():
+				cancel()
+				wg.Wait()
+				http.Error(w, "Timeout waiting for scrapes", http.StatusGatewayTimeout)
+				return
 			}
+
+			wg.Add(1)
+			go func(e *entry.RouterEntry) {
+				defer wg.Done()
+				defer func() { <-s.semaphore }()
+
+				scrapeCtx, scrapeCancel := context.WithTimeout(totalCtx, time.Duration(s.config.MaxScrapeDuration)*time.Second)
+				e.Connect(scrapeCtx)
+				scrapeCancel()
+
+				for _, c := range allCollectors {
+					if err := registry.Register(&routerCollector{
+						collector:      c,
+						entry:          e,
+						ctx:            scrapeCtx,
+						scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
+					}); err != nil {
+						slog.Warn("Failed to register collector", "collector", c.Name(), "error", err)
+					}
+				}
+			}(e)
 		}
+		wg.Wait()
 	}
 
 	promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(w, r)
@@ -164,8 +192,19 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), s.totalTimeout)
+	defer cancel()
+
+	select {
+	case s.semaphore <- struct{}{}:
+	default:
+		http.Error(w, "Server busy, too many concurrent scrapes", http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { <-s.semaphore }()
+
 	registry := prometheus.NewRegistry()
-	s.collectRouterMetrics(r.Context(), e, registry)
+	s.collectRouterMetrics(ctx, e, registry)
 
 	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
@@ -180,17 +219,23 @@ func (s *Server) collectRouterMetrics(ctx context.Context, e *entry.RouterEntry,
 	if s.registry != nil {
 		collectors := s.registry.All()
 		for _, c := range collectors {
-			registry.MustRegister(&routerCollector{
-				collector: c,
-				entry:     e,
-			})
+			if err := registry.Register(&routerCollector{
+				collector:      c,
+				entry:          e,
+				ctx:            ctx,
+				scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
+			}); err != nil {
+				slog.Warn("Failed to register collector", "collector", c.Name(), "error", err)
+			}
 		}
 	}
 }
 
 type routerCollector struct {
-	collector collector.Collector
-	entry     *entry.RouterEntry
+	collector      collector.Collector
+	entry          *entry.RouterEntry
+	ctx            context.Context
+	scrapeDuration time.Duration
 }
 
 func (rc *routerCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -199,8 +244,7 @@ func (rc *routerCollector) Describe(ch chan<- *prometheus.Desc) {
 
 func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now()
-	ctx := context.Background()
-	if err := rc.collector.Collect(ctx, rc.entry, ch); err != nil {
+	if err := rc.collector.Collect(rc.ctx, rc.entry, ch); err != nil {
 		routerName := "unknown"
 		if rc.entry != nil {
 			routerName = rc.entry.RouterName
@@ -214,7 +258,7 @@ func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 		[]string{"collector", "routerboard_name"},
 		nil,
 	)
-	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.CounterValue, float64(duration), rc.collector.Name(), rc.getRouterboardName())
+	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.GaugeValue, float64(duration), rc.collector.Name(), rc.getRouterboardName())
 }
 
 func (rc *routerCollector) getRouterboardName() string {
