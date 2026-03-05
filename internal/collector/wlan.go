@@ -28,7 +28,7 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	if err != nil {
 		slog.Debug("wlan monitor collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectMonitor(e, mb, ch, monitorRecords)
+		c.collectMonitor(mb, ch, monitorRecords)
 	}
 
 	registrationRecords, err := e.APIConn.Run(ctx, "/interface/wireless/registration-table/print")
@@ -49,7 +49,7 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	return nil
 }
 
-func (c *WLANCollector) collectMonitor(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	var noiseFloorRecords []map[string]string
 	var txCCQRecords []map[string]string
 	var registeredClientsRecords []map[string]string

@@ -16,7 +16,7 @@ test:
 	go test -race ./...
 
 lint:
-	go vet ./...
+	golangci-lint run
 
 clean:
 	rm -rf $(BUILD_DIR)
