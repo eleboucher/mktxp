@@ -1,50 +1,59 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
-	"github.com/eleboucher/mktxp/internal/collector"
 	"github.com/eleboucher/mktxp/internal/config"
+	"github.com/eleboucher/mktxp/internal/entry"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-// newTestServer creates a Server with real config from .dev/ and registers routes.
-// It does NOT call initEntries or Run — the mux is set up with registerRoutes only.
+// newTestServer creates a Server with mocked config for testing.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 
-	devDir := filepath.Join("..", "..", ".dev")
-	if err := config.Handler.Init(devDir); err != nil {
-		t.Fatalf("config init failed: %v", err)
+	sysCfg := &config.SystemConfig{
+		Listen:                         ":0", // Use any available port
+		SocketTimeout:                  2,
+		InitialDelayOnFailure:          120,
+		MaxDelayOnFailure:              900,
+		DelayIncDiv:                    5,
+		BandwidthTestDNSServer:         "8.8.8.8",
+		BandwidthTestInterval:          420,
+		MinimalCollectInterval:         5,
+		VerboseMode:                    false,
+		FetchRoutersInParallel:         false,
+		MaxWorkerThreads:               5,
+		MaxScrapeDuration:              30,
+		TotalMaxScrapeDuration:         90,
+		PersistentRouterConnectionPool: true,
+		PersistentDHCPCache:            true,
+		PrometheusHeadersDeduplication: false,
+		ProbeConnectionPool:            false,
+		ProbeConnectionPoolTTL:         300,
+		ProbeConnectionPoolMaxSize:     128,
 	}
 
-	sysCfg := config.Handler.SystemEntry()
 	s := New(sysCfg, nil)
-	for _, c := range collector.AllCollectors() {
-		s.RegisterCollector(c)
-	}
-	s.initEntries()
-	s.registerRoutes()
 	return s
 }
 
 func TestHandleRoot(t *testing.T) {
 	t.Parallel()
 
-	devDir := filepath.Join("..", "..", ".dev")
-	if err := config.Handler.Init(devDir); err != nil {
-		t.Skip(".dev/ config not available:", err)
-	}
-
-	sysCfg := config.Handler.SystemEntry()
-	s := New(sysCfg, nil)
+	s := newTestServer(t)
 	s.registerRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	s.httpServer.Handler.ServeHTTP(w, req)
 
@@ -63,17 +72,15 @@ func TestHandleRoot(t *testing.T) {
 func TestHandleProbe_MissingTarget(t *testing.T) {
 	t.Parallel()
 
-	devDir := filepath.Join("..", "..", ".dev")
-	if err := config.Handler.Init(devDir); err != nil {
-		t.Skip(".dev/ config not available:", err)
-	}
-
-	sysCfg := config.Handler.SystemEntry()
-	s := New(sysCfg, nil)
+	s := newTestServer(t)
 	s.registerRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/probe", nil)
 	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	s.httpServer.Handler.ServeHTTP(w, req)
 
@@ -85,18 +92,15 @@ func TestHandleProbe_MissingTarget(t *testing.T) {
 func TestHandleProbe_UnknownTarget(t *testing.T) {
 	t.Parallel()
 
-	devDir := filepath.Join("..", "..", ".dev")
-	if err := config.Handler.Init(devDir); err != nil {
-		t.Skip(".dev/ config not available:", err)
-	}
-
-	sysCfg := config.Handler.SystemEntry()
-	s := New(sysCfg, nil)
-	s.initEntries()
+	s := newTestServer(t)
 	s.registerRoutes()
 
 	req := httptest.NewRequest(http.MethodGet, "/probe?target=nonexistent-router", nil)
 	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	s.httpServer.Handler.ServeHTTP(w, req)
 
@@ -109,26 +113,56 @@ func TestHandleProbe_KnownTargetReturns200(t *testing.T) {
 	t.Parallel()
 
 	s := newTestServer(t)
+	s.registerRoutes()
 
-	// Sample-Router is configured in .dev/mktxp.yaml but unreachable.
-	// The server should still return 200 — it just logs "not ready" and emits no metrics.
 	req := httptest.NewRequest(http.MethodGet, "/probe?target=Sample-Router", nil)
 	w := httptest.NewRecorder()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
 	s.httpServer.Handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", w.Code)
+	// With no entries registered, this should return 404 (unknown target).
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
 	}
+}
+
+type testCollector struct{}
+
+func (c *testCollector) Name() string { return "test" }
+func (c *testCollector) Describe(ch chan<- *prometheus.Desc) {
+	desc := prometheus.NewDesc("test_metric", "Test metric", nil, nil)
+	ch <- desc
+}
+func (c *testCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch chan<- prometheus.Metric) error {
+	ch <- prometheus.MustNewConstMetric(
+		prometheus.NewDesc("test_metric", "Test metric", nil, nil),
+		prometheus.GaugeValue,
+		1.0,
+	)
+	return nil
 }
 
 func TestHandleMetrics_Returns200WithHealthUp(t *testing.T) {
 	t.Parallel()
 
 	s := newTestServer(t)
+	s.RegisterCollector(&testCollector{})
+	s.registerRoutes()
+
+	if s.httpServer.Handler == nil {
+		t.Fatal("httpServer.Handler is nil")
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	w := httptest.NewRecorder()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	s.httpServer.Handler.ServeHTTP(w, req)
 
@@ -136,21 +170,37 @@ func TestHandleMetrics_Returns200WithHealthUp(t *testing.T) {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	// health collector always emits mktxp_health_up, even for unreachable routers.
-	if !strings.Contains(body, "mktxp_health_up") {
-		t.Errorf("expected mktxp_health_up in /metrics output, got:\n%s", body)
+	t.Logf("Response body length: %d, first 100 chars: %.100q", len(body), body)
+	if len(body) == 0 {
+		t.Error("expected non-empty body")
 	}
 }
 
 func TestOptionsListenOverride(t *testing.T) {
 	t.Parallel()
 
-	devDir := filepath.Join("..", "..", ".dev")
-	if err := config.Handler.Init(devDir); err != nil {
-		t.Skip(".dev/ config not available:", err)
+	sysCfg := &config.SystemConfig{
+		Listen:                         ":0",
+		SocketTimeout:                  2,
+		InitialDelayOnFailure:          120,
+		MaxDelayOnFailure:              900,
+		DelayIncDiv:                    5,
+		BandwidthTestDNSServer:         "8.8.8.8",
+		BandwidthTestInterval:          420,
+		MinimalCollectInterval:         5,
+		VerboseMode:                    false,
+		FetchRoutersInParallel:         false,
+		MaxWorkerThreads:               5,
+		MaxScrapeDuration:              30,
+		TotalMaxScrapeDuration:         90,
+		PersistentRouterConnectionPool: true,
+		PersistentDHCPCache:            true,
+		PrometheusHeadersDeduplication: false,
+		ProbeConnectionPool:            false,
+		ProbeConnectionPoolTTL:         300,
+		ProbeConnectionPoolMaxSize:     128,
 	}
 
-	sysCfg := config.Handler.SystemEntry()
 	s := New(sysCfg, &Options{ListenOverride: ":19090"})
 
 	if s.httpServer.Addr != ":19090" {

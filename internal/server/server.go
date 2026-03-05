@@ -119,6 +119,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("handleMetrics called", "num_entries", len(s.entries), "registry_nil", s.registry == nil)
 	s.mu.RLock()
 	entries := make([]*entry.RouterEntry, 0, len(s.entries))
 	for _, e := range s.entries {
@@ -127,10 +128,22 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	registry := prometheus.NewRegistry()
-	for _, e := range entries {
-		e.Connect(r.Context())
-		for _, c := range s.registry.All() {
-			registry.MustRegister(&routerCollector{collector: c, entry: e})
+	if s.registry != nil {
+		allCollectors := s.registry.All()
+		slog.Debug("Registering collectors", "num_collectors", len(allCollectors))
+		for _, c := range allCollectors {
+			if len(entries) == 0 {
+				registry.MustRegister(&routerCollector{collector: c, entry: nil})
+			} else {
+				for _, e := range entries {
+					if e == nil {
+						slog.Warn("Entry is nil, skipping")
+						continue
+					}
+					e.Connect(r.Context())
+					registry.MustRegister(&routerCollector{collector: c, entry: e})
+				}
+			}
 		}
 	}
 
@@ -166,12 +179,14 @@ func (s *Server) collectRouterMetrics(ctx context.Context, e *entry.RouterEntry,
 		return
 	}
 
-	collectors := s.registry.All()
-	for _, c := range collectors {
-		registry.MustRegister(&routerCollector{
-			collector: c,
-			entry:     e,
-		})
+	if s.registry != nil {
+		collectors := s.registry.All()
+		for _, c := range collectors {
+			registry.MustRegister(&routerCollector{
+				collector: c,
+				entry:     e,
+			})
+		}
 	}
 }
 
@@ -187,6 +202,10 @@ func (rc *routerCollector) Describe(ch chan<- *prometheus.Desc) {
 func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx := context.Background()
 	if err := rc.collector.Collect(ctx, rc.entry, ch); err != nil {
-		slog.Error("Collector failed", "collector", rc.collector.Name(), "router", rc.entry.RouterName, "error", err)
+		routerName := "unknown"
+		if rc.entry != nil {
+			routerName = rc.entry.RouterName
+		}
+		slog.Error("Collector failed", "collector", rc.collector.Name(), "router", routerName, "error", err)
 	}
 }
