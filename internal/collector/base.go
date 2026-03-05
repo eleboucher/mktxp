@@ -1,10 +1,10 @@
 package collector
 
 import (
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/eleboucher/mktxp/internal/utils"
@@ -78,7 +78,6 @@ type MetricBuilder struct {
 	customKeys   []string // sorted for deterministic label ordering
 	customLabels map[string]string
 
-	mu      sync.Mutex
 	emitted map[string]map[string]struct{}
 }
 
@@ -129,18 +128,22 @@ func desc(name, help string, labelNames []string) *prometheus.Desc {
 
 func (b *MetricBuilder) Gauge(ch chan<- prometheus.Metric, name, help, valueKey string, labelKeys []string, record map[string]string) {
 	val := ParseFloat(record[valueKey])
-	// We must resolve the full label values to check for duplicates
 	finalLabelVals := b.labelValsFromRecord(labelKeys, record)
 
 	if b.isDuplicate(name, finalLabelVals) {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(
+	metric, err := prometheus.NewConstMetric(
 		desc(name, help, b.labelNames(labelKeys)),
 		prometheus.GaugeValue,
 		val,
 		finalLabelVals...,
 	)
+	if err != nil {
+		slog.Warn("Failed to build metric", "metric", name, "error", err)
+		return
+	}
+	ch <- metric
 }
 
 func (b *MetricBuilder) GaugeVal(ch chan<- prometheus.Metric, name, help string, value float64, labelKeys []string, labelVals []string) {
@@ -149,12 +152,17 @@ func (b *MetricBuilder) GaugeVal(ch chan<- prometheus.Metric, name, help string,
 	if b.isDuplicate(name, finalLabelVals) {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(
+	metric, err := prometheus.NewConstMetric(
 		desc(name, help, b.labelNames(labelKeys)),
 		prometheus.GaugeValue,
 		value,
 		finalLabelVals...,
 	)
+	if err != nil {
+		slog.Warn("Failed to build metric", "metric", name, "error", err)
+		return
+	}
+	ch <- metric
 }
 
 func (b *MetricBuilder) Counter(ch chan<- prometheus.Metric, name, help, valueKey string, labelKeys []string, record map[string]string) {
@@ -164,12 +172,17 @@ func (b *MetricBuilder) Counter(ch chan<- prometheus.Metric, name, help, valueKe
 	if b.isDuplicate(name, finalLabelVals) {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(
+	metric, err := prometheus.NewConstMetric(
 		desc(name, help, b.labelNames(labelKeys)),
 		prometheus.CounterValue,
 		val,
 		finalLabelVals...,
 	)
+	if err != nil {
+		slog.Warn("Failed to build metric", "metric", name, "error", err)
+		return
+	}
+	ch <- metric
 }
 
 func (b *MetricBuilder) CounterVal(ch chan<- prometheus.Metric, name, help string, value float64, labelKeys []string, labelVals []string) {
@@ -178,12 +191,17 @@ func (b *MetricBuilder) CounterVal(ch chan<- prometheus.Metric, name, help strin
 	if b.isDuplicate(name, finalLabelVals) {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(
+	metric, err := prometheus.NewConstMetric(
 		desc(name, help, b.labelNames(labelKeys)),
 		prometheus.CounterValue,
 		value,
 		finalLabelVals...,
 	)
+	if err != nil {
+		slog.Warn("Failed to build metric", "metric", name, "error", err)
+		return
+	}
+	ch <- metric
 }
 
 // Info emits a gauge=1 metric with all label values embedded in the label set.
@@ -195,21 +213,22 @@ func (b *MetricBuilder) Info(ch chan<- prometheus.Metric, name, help string, lab
 	if b.isDuplicate(fullMetricName, finalLabelVals) {
 		return
 	}
-	ch <- prometheus.MustNewConstMetric(
+	metric, err := prometheus.NewConstMetric(
 		desc(name+"_info", help, b.labelNames(labelKeys)),
 		prometheus.GaugeValue,
 		1,
 		finalLabelVals...,
 	)
+	if err != nil {
+		slog.Warn("Failed to build metric", "metric", fullMetricName, "error", err)
+		return
+	}
+	ch <- metric
 }
 
 func (b *MetricBuilder) isDuplicate(name string, labelVals []string) bool {
-	// Create a unique key for this label set.
-	// Using a null byte separator prevents collision (e.g. "a","b" vs "ab","")
 	key := strings.Join(labelVals, "\x00")
 
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	if _, ok := b.emitted[name]; !ok {
 		b.emitted[name] = make(map[string]struct{})
 	}
