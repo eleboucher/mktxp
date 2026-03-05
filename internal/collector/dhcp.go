@@ -99,8 +99,8 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		for _, record := range trimmed {
 			dhcpName := record["host_name"]
 			mb.GaugeVal(ch, "dhcp_name", "DHCP host name", 1,
-				[]string{"routerboard_name", "address", "mac_address", "dhcp_name"},
-				[]string{e.RouterID["routerboard_name"], record["address"], record["mac_address"], dhcpName})
+				[]string{"address", "mac_address", "dhcp_name"},
+				[]string{record["address"], record["mac_address"], dhcpName})
 		}
 	}
 

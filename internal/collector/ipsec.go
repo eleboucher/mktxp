@@ -37,7 +37,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelKeysWithRouter := labelKeys
 
 		collectIPSecPeer(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
@@ -54,7 +54,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			continue
 		}
 
-		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelKeysWithRouter := labelKeys
 		collectIPSecProposal(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
@@ -70,7 +70,7 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			continue
 		}
 
-		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelKeysWithRouter := labelKeys
 		collectIPSecPolicy(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 

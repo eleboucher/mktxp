@@ -81,8 +81,8 @@ func (c *WLANCollector) collectMonitor(e *entry.RouterEntry, mb *MetricBuilder, 
 		}
 
 		for _, rec := range noiseFloorRecords {
-			labelKeys := []string{"routerboard_name", "channel"}
-			labelVals := []string{e.RouterID["routerboard_name"], rec["channel"]}
+			labelKeys := []string{"channel"}
+			labelVals := []string{rec["channel"]}
 
 			for key, meta := range metricMap {
 				if val, ok := rec[key]; ok && val != "" {
@@ -108,8 +108,8 @@ func (c *WLANCollector) collectMonitor(e *entry.RouterEntry, mb *MetricBuilder, 
 		}
 
 		for _, rec := range txCCQRecords {
-			labelKeys := []string{"routerboard_name", "channel"}
-			labelVals := []string{e.RouterID["routerboard_name"], rec["channel"]}
+			labelKeys := []string{"channel"}
+			labelVals := []string{rec["channel"]}
 
 			for key, meta := range metricMap {
 				if val, ok := rec[key]; ok && val != "" {
@@ -136,8 +136,8 @@ func (c *WLANCollector) collectMonitor(e *entry.RouterEntry, mb *MetricBuilder, 
 		}
 
 		for _, rec := range registeredClientsRecords {
-			labelKeys := []string{"routerboard_name", "channel"}
-			labelVals := []string{e.RouterID["routerboard_name"], rec["channel"]}
+			labelKeys := []string{"channel"}
+			labelVals := []string{rec["channel"]}
 
 			for key, meta := range metricMap {
 				if val, ok := rec[key]; ok && val != "" {
@@ -176,8 +176,8 @@ func (c *WLANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBui
 		signalToNoise := ParseFloat(rec["signal-to-noise"])
 		txCCQ := ParseFloat(rec["tx-ccq"])
 
-		clientLabels := []string{"routerboard_name", "dhcp_name", "mac_address"}
-		clientVals := []string{e.RouterID["routerboard_name"], rec["dhcp_name"], rec["mac-address"]}
+		clientLabels := []string{"dhcp_name", "mac_address"}
+		clientVals := []string{rec["dhcp_name"], rec["mac-address"]}
 
 		mb.GaugeVal(ch, "wlan_clients_tx_bytes", "Number of sent packet bytes", txBytes, clientLabels, clientVals)
 		mb.GaugeVal(ch, "wlan_clients_rx_bytes", "Number of received packet bytes", rxBytes, clientLabels, clientVals)
@@ -185,7 +185,7 @@ func (c *WLANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBui
 		mb.GaugeVal(ch, "wlan_clients_signal_to_noise", "Client devices signal to noise ratio", signalToNoise, clientLabels, clientVals)
 		mb.GaugeVal(ch, "wlan_clients_tx_ccq", "Client Connection Quality (CCQ) for transmit", txCCQ, clientLabels, clientVals)
 
-		clientInfoLabels := []string{"routerboard_name", "dhcp_name", "dhcp_address", "rx_signal", "ssid", "tx_rate", "rx_rate", "interface", "mac_address", "uptime"}
+		clientInfoLabels := []string{"dhcp_name", "dhcp_address", "rx_signal", "ssid", "tx_rate", "rx_rate", "interface", "mac_address", "uptime"}
 		mb.Info(ch, "wlan_clients_devices", "Client devices info", clientInfoLabels, rec)
 	}
 }
@@ -198,8 +198,8 @@ func (c *WLANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBuilde
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"routerboard_name"}, "name", "ssid")
-		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["ssid"]}
+		labelKeysWithRouter := []string{"name", "ssid"}
+		labelVals := []string{rec["name"], rec["ssid"]}
 
 		metricMap := map[string]struct {
 			name       string

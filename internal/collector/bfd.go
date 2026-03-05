@@ -39,8 +39,8 @@ func (c *BFDCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
-		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"], rec["local_interface"]}
+		labelKeysWithRouter := labelKeys
+		labelVals := []string{rec["name"], rec["remote_address"], rec["local_interface"]}
 
 		metricMap := map[string]struct {
 			name       string

@@ -29,7 +29,7 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 	}
 
 	mb := NewMetricBuilder(e)
-	labelKeysWithRouter := []string{"routerboard_name", "name", "common_name", "issuer"}
+	labelKeysWithRouter := []string{"name", "common_name", "issuer"}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
@@ -38,7 +38,7 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelVals := []string{e.RouterID["routerboard_name"], rec["name"], rec["common_name"], rec["issuer"]}
+		labelVals := []string{rec["name"], rec["common_name"], rec["issuer"]}
 
 		metricMap := map[string]struct {
 			name       string

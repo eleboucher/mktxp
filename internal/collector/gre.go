@@ -29,7 +29,7 @@ func (c *GRECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 
 	mb := NewMetricBuilder(e)
 	labelKeys := []string{"name", "remote_address"}
-	labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+	labelKeysWithRouter := labelKeys
 
 	metricMap := map[string]struct {
 		name       string
@@ -58,9 +58,9 @@ func (c *GRECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 
 		if rec["running"] == trueStr && rec["disabled"] != trueStr {
-			mb.GaugeVal(ch, "gre_status", "GRE tunnel status (1=running, 0=stopped)", 1.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "gre_status", "GRE tunnel status (1=running, 0=stopped)", 1.0, labelKeysWithRouter, []string{rec["name"], rec["remote_address"]})
 		} else {
-			mb.GaugeVal(ch, "gre_status", "GRE tunnel status (1=running, 0=stopped)", 0.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "gre_status", "GRE tunnel status (1=running, 0=stopped)", 0.0, labelKeysWithRouter, []string{rec["name"], rec["remote_address"]})
 		}
 
 		for rosKey, metric := range metricMap {
@@ -75,7 +75,7 @@ func (c *GRECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 						metricValue = 0.0
 					}
 				}
-				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"], rec["remote_address"]})
+				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{rec["name"], rec["remote_address"]})
 			}
 		}
 

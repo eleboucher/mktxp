@@ -91,11 +91,11 @@ func (c *HealthCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch 
 				if strings.ToLower(val) == "ok" || val == trueStr {
 					state = 1
 				}
-				mb.GaugeVal(ch, stateKeys[key], "System "+strings.ReplaceAll(key, "_", " ")+" state", state, []string{"routerboard_name", "routerboard_address"}, []string{e.RouterID["routerboard_name"], e.RouterID["routerboard_address"]})
+				mb.GaugeVal(ch, stateKeys[key], "System "+strings.ReplaceAll(key, "_", " ")+" state", state, []string{"routerboard_address"}, []string{e.RouterID["routerboard_address"]})
 			} else if meta, ok := metricMap[key]; ok {
 				num := ParseFloat(val)
 				if num != 0 || key == "voltage" || key == "temperature" {
-					mb.GaugeVal(ch, meta.name, meta.help, num, []string{"routerboard_name", "routerboard_address"}, []string{e.RouterID["routerboard_name"], e.RouterID["routerboard_address"]})
+					mb.GaugeVal(ch, meta.name, meta.help, num, []string{"routerboard_address"}, []string{e.RouterID["routerboard_address"]})
 				}
 			}
 		}

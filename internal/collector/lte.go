@@ -37,7 +37,7 @@ func (c *LTECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+		labelKeysWithRouter := labelKeys
 		collectLTE(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 

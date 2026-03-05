@@ -29,7 +29,7 @@ func (c *W60GCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 	mb := NewMetricBuilder(e)
 	labelKeys := []string{"name"}
-	labelKeysWithRouter := append([]string{"routerboard_name"}, labelKeys...)
+	labelKeysWithRouter := labelKeys
 
 	metricMap := map[string]struct {
 		name       string
@@ -68,9 +68,9 @@ func (c *W60GCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 
 		if rec["running"] == trueStr && rec["disabled"] != trueStr {
-			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 1.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"]})
+			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 1.0, labelKeysWithRouter, []string{rec["name"]})
 		} else {
-			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 0.0, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"]})
+			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 0.0, labelKeysWithRouter, []string{rec["name"]})
 		}
 
 		for rosKey, metric := range metricMap {
@@ -85,7 +85,7 @@ func (c *W60GCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 						metricValue = 0.0
 					}
 				}
-				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{e.RouterID["routerboard_name"], rec["name"]})
+				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{rec["name"]})
 			}
 		}
 

@@ -24,11 +24,10 @@ func (c *MktxpCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 	}
 
 	mb := NewMetricBuilder(e)
-	labelKeysWithRouter := []string{"routerboard_name"}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
-		c.collectSystemMetrics(mb, ch, rec, labelKeysWithRouter, e.RouterID["routerboard_name"])
+		c.collectSystemMetrics(mb, ch, rec, []string{}, "")
 	}
 
 	return nil
@@ -39,7 +38,7 @@ func (c *MktxpCollector) collectSystemMetrics(
 	ch chan<- prometheus.Metric,
 	rec map[string]string,
 	labelKeys []string,
-	routerID string,
+	_ string,
 ) {
 	metricMap := map[string]struct {
 		name       string
@@ -70,7 +69,7 @@ func (c *MktxpCollector) collectSystemMetrics(
 			} else {
 				value = 1.0
 			}
-			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{routerID})
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, nil)
 		}
 	}
 
