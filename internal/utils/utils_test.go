@@ -25,7 +25,6 @@ func TestParseMktUptime(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
 			got := ParseMktUptime(tt.input)
@@ -55,7 +54,6 @@ func TestParseTimedelta(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
 			got := ParseTimedelta(tt.input, tt.ms)
@@ -73,7 +71,6 @@ func TestStr2Bool(t *testing.T) {
 	falseInputs := []string{"n", "no", "NO", "f", "false", "False", "off", "fail", "0"}
 
 	for _, s := range trueInputs {
-		s := s
 		t.Run("true/"+s, func(t *testing.T) {
 			t.Parallel()
 			if got := Str2Bool(s, false); !got {
@@ -83,7 +80,6 @@ func TestStr2Bool(t *testing.T) {
 	}
 
 	for _, s := range falseInputs {
-		s := s
 		t.Run("false/"+s, func(t *testing.T) {
 			t.Parallel()
 			if got := Str2Bool(s, true); got {
@@ -119,7 +115,6 @@ func TestFormatInterfaceName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.format+"/"+tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := FormatInterfaceName(tt.name, tt.comment, tt.format)
@@ -146,7 +141,6 @@ func TestRouterOS7Version(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.version, func(t *testing.T) {
 			t.Parallel()
 			got := RouterOS7Version(tt.version)
@@ -172,7 +166,7 @@ func TestBuiltinWiFiCAPsMANVersion(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
+
 		t.Run(tt.version, func(t *testing.T) {
 			t.Parallel()
 			got := BuiltinWiFiCAPsMANVersion(tt.version)

@@ -22,7 +22,6 @@ func (c *CAPsMANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 		return nil
 	}
 
-	// Collect CAPsMAN interfaces (access points)
 	interfaces, err := e.APIConn.Run(ctx, "/interface/caps-man/print")
 	if err != nil {
 		slog.Debug("capsman interface collect failed", "router", e.RouterName, "err", err)
@@ -40,53 +39,70 @@ func (c *CAPsMANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]}
 
-		mb.GaugeVal(ch, "capsman_interface_status", "CAPsMAN interface status (1=running, 0=stopped)", func() float64 {
-			if rec["running"] == "true" && rec["disabled"] != "true" {
-				return 1
-			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
-
-		if _, ok := rec["disabled"]; ok {
-			disabled := 0.0
-			if rec["disabled"] == "true" {
-				disabled = 1
-			}
-			mb.GaugeVal(ch, "capsman_interface_disabled", "CAPsMAN interface disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"mac-address":      {"capsman_mac_address", "CAPsMAN MAC address", false},
+			"ip-address":       {"capsman_ip_address", "CAPsMAN IP address", false},
+			"remote-interface": {"capsman_remote_interface", "CAPsMAN remote interface", false},
+			"channel-width":    {"capsman_channel_width", "CAPsMAN channel width", false},
 		}
 
-		if _, ok := rec["enabled"]; ok {
-			enabled := 0.0
-			if rec["enabled"] == "true" {
-				enabled = 1
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				mb.GaugeVal(ch, meta.name, meta.help, 1, labelKeysWithRouter, labelVals)
 			}
-			mb.GaugeVal(ch, "capsman_interface_enabled", "CAPsMAN interface enabled status", enabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
 		}
 
-		if _, ok := rec["interface-mode"]; ok && rec["interface-mode"] != "" {
-			mb.GaugeVal(ch, "capsman_interface_mode", "CAPsMAN interface mode (bridge/access-point/etc)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
+		metricGauges := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"running":  {"capsman_interface_status", "CAPsMAN interface status (1=running, 0=stopped)", false},
+			"disabled": {"capsman_interface_disabled", "CAPsMAN interface disabled status", false},
+			"enabled":  {"capsman_interface_enabled", "CAPsMAN interface enabled status", false},
 		}
 
-		if _, ok := rec["channel"]; ok && rec["channel"] != "" {
-			mb.GaugeVal(ch, "capsman_channel", "CAPsMAN channel configuration", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
+		for key, meta := range metricGauges {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					if key == "running" {
+						if rec["running"] == "true" && rec["disabled"] != "true" {
+							value = 1
+						} else {
+							value = 0
+						}
+					} else {
+						value = ParseBool(val)
+					}
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
+			}
+		}
+
+		infoFields := map[string]string{
+			"interface-mode": "CAPsMAN interface mode (bridge/access-point/etc)",
+			"channel":        "CAPsMAN channel configuration",
+		}
+
+		for key, help := range infoFields {
+			if _, ok := rec[key]; ok && rec[key] != "" {
+				mb.GaugeVal(ch, "capsman_"+strings.ReplaceAll(key, "-", "_"), help, 1, labelKeysWithRouter, labelVals)
+			}
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
 			mb.Info(ch, "capsman_interface_info", "Information about CAPsMAN interface",
 				[]string{"name", "mac_address", "interface_mode"},
 				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"capsman_mac_address", "mac-address"},
-			{"capsman_ip_address", "ip-address"},
-			{"capsman_remote_interface", "remote-interface"},
-			{"capsman_channel_width", "channel-width"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "CAPsMAN "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["mac_address"]})
-			}
 		}
 	}
 

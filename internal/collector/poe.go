@@ -34,14 +34,28 @@ func (c *POECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		rec := TrimRecord(raw, allKeys)
 		mb.Info(ch, "poe", "POE info metrics", infoKeys, rec)
 
-		if _, ok := rec["poe_out_voltage"]; ok {
-			mb.Gauge(ch, "poe_out_voltage", "POE out voltage", "poe_out_voltage", []string{"name"}, rec)
+		labelKeys := []string{"name"}
+
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"poe_out_voltage": {"poe_out_voltage", "POE out voltage", true},
+			"poe_out_current": {"poe_out_current", "POE out current", true},
+			"poe_out_power":   {"poe_out_power", "POE out power", true},
 		}
-		if _, ok := rec["poe_out_current"]; ok {
-			mb.Gauge(ch, "poe_out_current", "POE out current", "poe_out_current", []string{"name"}, rec)
-		}
-		if _, ok := rec["poe_out_power"]; ok {
-			mb.Gauge(ch, "poe_out_power", "POE out power", "poe_out_power", []string{"name"}, rec)
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{rec["name"]})
+			}
 		}
 	}
 

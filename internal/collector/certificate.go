@@ -29,7 +29,7 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 	}
 
 	mb := NewMetricBuilder(e)
-	labelKeys := []string{"name", "common_name", "issuer"}
+	labelKeysWithRouter := []string{"router_id", "name", "common_name", "issuer"}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
@@ -38,58 +38,71 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]}
 
-		mb.GaugeVal(ch, "certificate_valid", "Certificate validity status (1=valid, 0=expired/invalid)", func() float64 {
-			if rec["expires-after"] != "" && rec["disabled"] != "true" {
-				return 1
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"expires-after": {"certificate_expires_after", "Certificate expiration time in seconds", true},
+			"key-size":      {"certificate_key_size", "Certificate key size in bits", true},
+		}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+		}
 
 		if _, ok := rec["disabled"]; ok {
 			disabled := 0.0
-			if rec["disabled"] == "true" {
+			if rec["disabled"] == trueStr {
 				disabled = 1
 			}
-			mb.GaugeVal(ch, "certificate_disabled", "Certificate disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+			mb.GaugeVal(ch, "certificate_disabled", "Certificate disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["expires-after"]; ok && rec["expires-after"] != "" {
-			mb.GaugeVal(ch, "certificate_expires_after", "Certificate expiration time in seconds", ParseFloat(rec["expires-after"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+		if rec["expires-after"] != "" && rec["disabled"] != trueStr {
+			mb.GaugeVal(ch, "certificate_valid", "Certificate validity status (1=valid, 0=expired/invalid)", 1, labelKeysWithRouter, labelVals)
+		} else {
+			mb.GaugeVal(ch, "certificate_valid", "Certificate validity status (1=valid, 0=expired/invalid)", 0, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["key-type"]; ok && rec["key-type"] != "" {
-			mb.GaugeVal(ch, "certificate_key_type", "Certificate key type (RSA/ECDSA)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+		metricInfo := map[string]string{
+			"key-type":      "Certificate key type (RSA/ECDSA)",
+			"serial-number": "Certificate serial number",
+			"fingerprint":   "Certificate fingerprint",
 		}
 
-		if _, ok := rec["key-size"]; ok && rec["key-size"] != "" {
-			mb.GaugeVal(ch, "certificate_key_size", "Certificate key size in bits", ParseFloat(rec["key-size"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+		for key, help := range metricInfo {
+			if _, ok := rec[key]; ok && rec[key] != "" {
+				mb.GaugeVal(ch, "certificate_"+strings.ReplaceAll(key, "-", "_"), help, 1, labelKeysWithRouter, labelVals)
+			}
 		}
 
-		if _, ok := rec["serial-number"]; ok && rec["serial-number"] != "" {
-			mb.GaugeVal(ch, "certificate_serial_number", "Certificate serial number", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
-		}
-
-		if _, ok := rec["fingerprint"]; ok && rec["fingerprint"] != "" {
-			mb.GaugeVal(ch, "certificate_fingerprint", "Certificate fingerprint", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "certificate_info", "Information about certificate",
-				[]string{"name", "common_name", "issuer", "key_type"},
-				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
+		metricFields := []struct{ metric, key string }{
 			{"certificate_issuer_cn", "issuer-cn"},
 			{"certificate_not_before", "not-before"},
 			{"certificate_not_after", "not-after"},
 			{"certificate_common_name", "common-name"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "Certificate "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["common_name"], rec["issuer"]})
+		}
+
+		for _, mf := range metricFields {
+			if val, ok := rec[mf.key]; ok && val != "" {
+				mb.GaugeVal(ch, mf.metric, "Certificate "+strings.ToUpper(mf.key), 1, labelKeysWithRouter, labelVals)
 			}
+		}
+
+		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
+			mb.Info(ch, "certificate_info", "Information about certificate",
+				[]string{"name", "common_name", "issuer", "key_type"}, rec)
 		}
 	}
 

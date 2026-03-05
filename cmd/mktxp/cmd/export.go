@@ -32,11 +32,37 @@ var (
 func init() {
 	rootCmd.AddCommand(exportCmd)
 
-	exportCmd.Flags().StringVar(&exportListen, "listen", "", "Override listen address (default from config)")
-	exportCmd.Flags().IntVar(&exportSocketTimeout, "socket-timeout", 0, "Override socket timeout in seconds")
-	exportCmd.Flags().BoolVarP(&exportVerbose, "verbose", "v", false, "Enable verbose/debug logging")
-	exportCmd.Flags().IntVar(&exportMaxScrapeDur, "max-scrape-duration", 0, "Override per-router scrape timeout in seconds")
-	exportCmd.Flags().IntVar(&exportTotalMaxScrapeDur, "total-max-scrape-duration", 0, "Override total scrape timeout in seconds")
+	exportCmd.Flags().StringVar(
+		&exportListen,
+		"listen",
+		"",
+		"Override listen address (default from config)",
+	)
+	exportCmd.Flags().IntVar(
+		&exportSocketTimeout,
+		"socket-timeout",
+		0,
+		"Override socket timeout in seconds",
+	)
+	exportCmd.Flags().BoolVarP(
+		&exportVerbose,
+		"verbose",
+		"v",
+		false,
+		"Enable verbose/debug logging",
+	)
+	exportCmd.Flags().IntVar(
+		&exportMaxScrapeDur,
+		"max-scrape-duration",
+		0,
+		"Override per-router scrape timeout",
+	)
+	exportCmd.Flags().IntVar(
+		&exportTotalMaxScrapeDur,
+		"total-max-scrape-duration",
+		0,
+		"Override total scrape timeout",
+	)
 }
 
 func runExport(cmd *cobra.Command, args []string) {

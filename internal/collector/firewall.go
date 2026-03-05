@@ -21,11 +21,10 @@ func (c *FirewallCollector) Name() string { return "firewall" }
 // Describe intentionally sends nothing — unchecked collector with dynamic labels.
 func (c *FirewallCollector) Describe(_ chan<- *prometheus.Desc) {}
 
-// firewallChain describes a single firewall table and its Prometheus metric name / help text.
 type firewallChain struct {
-	name   string // RouterOS table name: filter, raw, nat, mangle
-	metric string // Prometheus metric name
-	help   string // Prometheus help text
+	name   string
+	metric string
+	help   string
 }
 
 var firewallChains = []firewallChain{
@@ -57,7 +56,6 @@ func (c *FirewallCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	return nil
 }
 
-// collectFirewallChain fetches firewall rules for one chain/table and emits byte counters.
 func collectFirewallChain(
 	ctx context.Context,
 	e *entry.RouterEntry,
@@ -76,11 +74,17 @@ func collectFirewallChain(
 
 	wantedKeys := []string{"chain", "action", "bytes", "comment", "log", "out_interface", "protocol"}
 
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"bytes": {metricName, helpText, true},
+	}
+
 	for _, raw := range records {
 		record := TrimRecord(raw, wantedKeys)
 
-		// Build a composite rule name: "| {chain} | {action} | {comment}"
-		// with optional "| {out_interface}" and "| {protocol}" suffixes.
 		ruleName := fmt.Sprintf("| %s | %s | %s", record["chain"], record["action"], record["comment"])
 		if record["out_interface"] != "" {
 			ruleName += fmt.Sprintf(" | %s", record["out_interface"])
@@ -89,11 +93,20 @@ func collectFirewallChain(
 			ruleName += fmt.Sprintf(" | %s", record["protocol"])
 		}
 
-		mb.CounterVal(ch, metricName, helpText,
-			ParseFloat(record["bytes"]),
-			[]string{"name", "log"},
-			[]string{ruleName, record["log"]},
-		)
+		labelKeys := []string{"name", "log"}
+		labelVals := []string{ruleName, record["log"]}
+
+		for key, meta := range metricMap {
+			if val, ok := record[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+			}
+		}
 	}
 
 	return nil

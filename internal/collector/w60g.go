@@ -3,7 +3,6 @@ package collector
 import (
 	"context"
 	"log/slog"
-	"strings"
 
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,6 +29,26 @@ func (c *W60GCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 	mb := NewMetricBuilder(e)
 	labelKeys := []string{"name"}
+	labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"disabled":        {"w60g_disabled", "W60G interface disabled status", false},
+		"frequency":       {"w60g_frequency", "W60G operating frequency in GHz", true},
+		"bandwidth":       {"w60g_bandwidth", "W60G channel bandwidth in MHz", true},
+		"tx-power":        {"w60g_tx_power", "W60G transmit power in dBm", true},
+		"signal-strength": {"w60g_signal_strength", "W60G signal strength in dBm", true},
+		"mode":            {"w60g_mode", "W60G operating mode (station/p2p/ap)", false},
+		"ssid":            {"w60g_ssid", "W60G SSID configuration", false},
+		"country":         {"w60g_country", "W60G regulatory domain country", false},
+		"channel":         {"w60g_channel", "W60G CHANNEL", false},
+		"antenna-gain":    {"w60g_antenna_gain", "W60G ANTENNA-GAIN", false},
+		"rssi":            {"w60g_rssi", "W60G RSSI", false},
+		"snr":             {"w60g_snr", "W60G SNR", false},
+	}
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
@@ -38,66 +57,33 @@ func (c *W60GCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		}
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
-		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
 
-		mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", func() float64 {
-			if rec["running"] == "true" && rec["disabled"] != "true" {
-				return 1
+		if rec["running"] == trueStr && rec["disabled"] != trueStr {
+			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+		} else {
+			mb.GaugeVal(ch, "w60g_status", "W60G interface status (1=up, 0=down)", 0.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+		}
+
+		for rosKey, metric := range metricMap {
+			if val, ok := rec[rosKey]; ok && val != "" {
+				var metricValue float64
+				if metric.parseFloat {
+					metricValue = ParseFloat(val)
+				} else {
+					if val == trueStr {
+						metricValue = 1.0
+					} else {
+						metricValue = 0.0
+					}
+				}
+				mb.GaugeVal(ch, metric.name, metric.help, metricValue, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
 			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-
-		if _, ok := rec["disabled"]; ok {
-			disabled := 0.0
-			if rec["disabled"] == "true" {
-				disabled = 1
-			}
-			mb.GaugeVal(ch, "w60g_disabled", "W60G interface disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["frequency"]; ok && rec["frequency"] != "" {
-			mb.GaugeVal(ch, "w60g_frequency", "W60G operating frequency in GHz", ParseFloat(rec["frequency"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["bandwidth"]; ok && rec["bandwidth"] != "" {
-			mb.GaugeVal(ch, "w60g_bandwidth", "W60G channel bandwidth in MHz", ParseFloat(rec["bandwidth"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["tx-power"]; ok && rec["tx-power"] != "" {
-			mb.GaugeVal(ch, "w60g_tx_power", "W60G transmit power in dBm", ParseFloat(rec["tx-power"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["signal-strength"]; ok && rec["signal-strength"] != "" {
-			mb.GaugeVal(ch, "w60g_signal_strength", "W60G signal strength in dBm", ParseFloat(rec["signal-strength"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["mode"]; ok && rec["mode"] != "" {
-			mb.GaugeVal(ch, "w60g_mode", "W60G operating mode (station/p2p/ap)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["ssid"]; ok && rec["ssid"] != "" {
-			mb.GaugeVal(ch, "w60g_ssid", "W60G SSID configuration", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["country"]; ok && rec["country"] != "" {
-			mb.GaugeVal(ch, "w60g_country", "W60G regulatory domain country", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
 			mb.Info(ch, "w60g_info", "Information about W60G interface",
 				[]string{"name", "mode"},
 				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"w60g_channel", "channel"},
-			{"w60g_antenna_gain", "antenna-gain"},
-			{"w60g_rssi", "rssi"},
-			{"w60g_snr", "snr"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "W60G "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-			}
 		}
 	}
 

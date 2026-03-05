@@ -39,61 +39,66 @@ func (c *ContainerCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"]}
 
-		mb.GaugeVal(ch, "container_status", "Container status (1=running, 0=stopped)", func() float64 {
-			if rec["running"] == "true" && rec["disabled"] != "true" {
-				return 1
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"memory":      {"container_memory", "Container allocated memory in MB", true},
+			"cpu-weight":  {"container_cpu_weight", "Container CPU weight allocation", true},
+			"cpu-quota":   {"container_cpu_quota", "Container CPU quota percentage", true},
+			"network":     {"container_network", "Container network configuration", false},
+			"environment": {"container_environment", "Container environment variables configured", false},
+			"volume":      {"container_volume", "Container volume mounts configured", false},
+		}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+		}
+
+		if status, ok := rec["running"]; ok {
+			containerStatus := 0.0
+			if status == trueStr && rec["disabled"] != trueStr {
+				containerStatus = 1
+			}
+			mb.GaugeVal(ch, "container_status", "Container status (1=running, 0=stopped)", containerStatus, labelKeysWithRouter, labelVals)
+		}
 
 		if _, ok := rec["disabled"]; ok {
 			disabled := 0.0
-			if rec["disabled"] == "true" {
+			if rec["disabled"] == trueStr {
 				disabled = 1
 			}
-			mb.GaugeVal(ch, "container_disabled", "Container disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+			mb.GaugeVal(ch, "container_disabled", "Container disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["memory"]; ok && rec["memory"] != "" {
-			mb.GaugeVal(ch, "container_memory", "Container allocated memory in MB", ParseFloat(rec["memory"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+		infoFields := map[string]string{
+			"image":          "Container image",
+			"command":        "Container command",
+			"entrypoint":     "Container entrypoint",
+			"restart-policy": "Container restart policy",
 		}
 
-		if _, ok := rec["cpu-weight"]; ok && rec["cpu-weight"] != "" {
-			mb.GaugeVal(ch, "container_cpu_weight", "Container CPU weight allocation", ParseFloat(rec["cpu-weight"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["cpu-quota"]; ok && rec["cpu-quota"] != "" {
-			mb.GaugeVal(ch, "container_cpu_quota", "Container CPU quota percentage", ParseFloat(rec["cpu-quota"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["network"]; ok && rec["network"] != "" {
-			mb.GaugeVal(ch, "container_network", "Container network configuration", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["environment"]; ok && rec["environment"] != "" {
-			mb.GaugeVal(ch, "container_environment", "Container environment variables configured", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-		}
-
-		if _, ok := rec["volume"]; ok && rec["volume"] != "" {
-			mb.GaugeVal(ch, "container_volume", "Container volume mounts configured", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
+		for key, help := range infoFields {
+			if _, ok := rec[key]; ok && rec[key] != "" {
+				mb.GaugeVal(ch, "container_"+strings.ReplaceAll(key, "-", "_"), help, 1, labelKeysWithRouter, labelVals)
+			}
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
 			mb.Info(ch, "container_info", "Information about container configuration",
 				[]string{"name", "image"},
 				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"container_image", "image"},
-			{"container_command", "command"},
-			{"container_entrypoint", "entrypoint"},
-			{"container_restart_policy", "restart-policy"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "Container "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"]})
-			}
 		}
 	}
 

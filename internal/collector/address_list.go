@@ -38,26 +38,32 @@ func (c *AddressListCollector) Collect(ctx context.Context, e *entry.RouterEntry
 
 		rec["name"] = FormatInterfaceName(rec["interface"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["address"], rec["network"]}
 
-		mb.GaugeVal(ch, "ip_address_assigned", "Indicates if an IP address is assigned to an interface", 1,
-			labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["address"], rec["network"]})
-
-		if _, ok := rec["dynamic"]; ok {
-			dynamic := 0.0
-			if rec["dynamic"] == "true" {
-				dynamic = 1
-			}
-			mb.GaugeVal(ch, "ip_address_dynamic", "Indicates if the IP address is dynamically assigned", dynamic,
-				labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["address"], rec["network"]})
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"address":  {"ip_address_assigned", "Indicates if an IP address is assigned to an interface", false},
+			"dynamic":  {"ip_address_dynamic", "Indicates if the IP address is dynamically assigned", false},
+			"disabled": {"ip_address_disabled", "Indicates if the IP address is disabled", false},
 		}
 
-		if _, ok := rec["disabled"]; ok {
-			disabled := 0.0
-			if rec["disabled"] == "true" {
-				disabled = 1
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					if key == "address" {
+						value = 1
+					} else {
+						value = ParseBool(val)
+					}
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
-			mb.GaugeVal(ch, "ip_address_disabled", "Indicates if the IP address is disabled", disabled,
-				labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["address"], rec["network"]})
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {

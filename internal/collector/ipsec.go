@@ -3,7 +3,6 @@ package collector
 import (
 	"context"
 	"log/slog"
-	"strings"
 
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,7 +21,6 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		return nil
 	}
 
-	// Collect IPSec peers (connections)
 	peers, err := e.APIConn.Run(ctx, "/ip/ipsec/peer/print")
 	if err != nil {
 		slog.Debug("ipsec peer collect failed", "router", e.RouterName, "err", err)
@@ -41,52 +39,9 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
 
-		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", func() float64 {
-			if rec["state"] == "running" || rec["state"] == "active" {
-				return 1
-			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-
-		if _, ok := rec["disabled"]; ok {
-			disabled := 0.0
-			if rec["disabled"] == "true" {
-				disabled = 1
-			}
-			mb.GaugeVal(ch, "ipsec_peer_disabled", "IPSec peer disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-		}
-
-		if _, ok := rec["auth_algorithm"]; ok && rec["auth_algorithm"] != "" {
-			mb.GaugeVal(ch, "ipsec_auth_algorithm", "IPSec authentication algorithm", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-		}
-
-		if _, ok := rec["encryption_algorithm"]; ok && rec["encryption_algorithm"] != "" {
-			mb.GaugeVal(ch, "ipsec_encryption_algorithm", "IPSec encryption algorithm", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-		}
-
-		if _, ok := rec["pfs_group"]; ok && rec["pfs_group"] != "" {
-			mb.GaugeVal(ch, "ipsec_pfs_group", "IPSec PFS group", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "ipsec_peer_info", "Information about IPSec peer",
-				[]string{"name", "remote_address", "auth_algorithm", "encryption_algorithm"},
-				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"ipsec_remote_port", "remote-port"},
-			{"ipsec_local_port", "local-port"},
-			{"ipsec_lifetime", "lifetime"},
-			{"ipsec_pfs", "pfs"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "IPSec "+strings.ToUpper(metric.key), ParseFloat(val), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-			}
-		}
+		collectIPSecPeer(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
-	// Collect IPSec proposals
 	proposals, err := e.APIConn.Run(ctx, "/ip/ipsec/proposal/print")
 	if err != nil {
 		slog.Debug("ipsec proposal collect failed", "router", e.RouterName, "err", err)
@@ -100,33 +55,9 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		}
 
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-
-		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", func() float64 {
-			if rec["disabled"] != "true" {
-				return 1
-			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], ""})
-
-		for _, metric := range []struct{ name, key string }{
-			{"ipsec_proposal_encryption", "encryption-algorithm"},
-			{"ipsec_proposal_authentication", "authentication-algorithms"},
-			{"ipsec_proposal_pfs", "pfs-group"},
-			{"ipsec_proposal_lifetime", "lifetime"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "IPSec Proposal "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], ""})
-			}
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "ipsec_proposal_info", "Information about IPSec proposal",
-				[]string{"name", "encryption_algorithm", "authentication_algorithms"},
-				rec)
-		}
+		collectIPSecProposal(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
-	// Collect IPSec policies
 	policies, err := e.APIConn.Run(ctx, "/ip/ipsec/policy/print")
 	if err != nil {
 		slog.Debug("ipsec policy collect failed", "router", e.RouterName, "err", err)
@@ -140,35 +71,142 @@ func (c *IPSecCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 		}
 
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
-
-		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", func() float64 {
-			if rec["disabled"] != "true" {
-				return 1
-			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], ""})
-
-		mb.GaugeVal(ch, "ipsec_policy_sa_limit", "IPSec policy SA limit", ParseFloat(rec["sa-limit"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], ""})
-
-		for _, metric := range []struct{ name, key string }{
-			{"ipsec_policy_tunnel", "tunnel"},
-			{"ipsec_policy_src_address", "src-address"},
-			{"ipsec_policy_dst_address", "dst-address"},
-			{"ipsec_policy_protocol", "protocol"},
-			{"ipsec_policy_dst_port", "dst-port"},
-			{"ipsec_policy_action", "action"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "IPSec Policy "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], ""})
-			}
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "ipsec_policy_info", "Information about IPSec policy",
-				[]string{"name", "src_address", "dst_address", "action"},
-				rec)
-		}
+		collectIPSecPolicy(mb, ch, rec, labelKeysWithRouter, e.RouterID)
 	}
 
 	return nil
+}
+
+func collectIPSecPeer(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]string, labelKeysWithRouter []string, routerID map[string]string) {
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"remote-port": {"ipsec_remote_port", "IPSec remote port", true},
+		"local-port":  {"ipsec_local_port", "IPSec local port", true},
+		"lifetime":    {"ipsec_lifetime", "IPSec lifetime", true},
+		"pfs":         {"ipsec_pfs", "IPSec PFS", true},
+	}
+
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val)
+			} else {
+				value = 1.0
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+		}
+	}
+
+	if rec["state"] == "running" || rec["state"] == "active" {
+		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	} else {
+		mb.GaugeVal(ch, "ipsec_peer_status", "IPSec peer status (1=active, 0=inactive)", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	}
+
+	if disabledVal, ok := rec["disabled"]; ok {
+		disabled := 0.0
+		if disabledVal == trueStr {
+			disabled = 1.0
+		}
+		mb.GaugeVal(ch, "ipsec_peer_disabled", "IPSec peer disabled status", disabled, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	}
+
+	if _, ok := rec["auth_algorithm"]; ok && rec["auth_algorithm"] != "" {
+		mb.GaugeVal(ch, "ipsec_auth_algorithm", "IPSec authentication algorithm", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	}
+
+	if _, ok := rec["encryption_algorithm"]; ok && rec["encryption_algorithm"] != "" {
+		mb.GaugeVal(ch, "ipsec_encryption_algorithm", "IPSec encryption algorithm", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	}
+
+	if _, ok := rec["pfs_group"]; ok && rec["pfs_group"] != "" {
+		mb.GaugeVal(ch, "ipsec_pfs_group", "IPSec PFS group", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], rec["remote_address"]})
+	}
+
+	if comment, ok := rec["comment"]; ok && comment != "" {
+		mb.Info(ch, "ipsec_peer_info", "Information about IPSec peer",
+			[]string{"name", "remote_address", "auth_algorithm", "encryption_algorithm"},
+			rec)
+	}
+}
+
+func collectIPSecProposal(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]string, labelKeysWithRouter []string, routerID map[string]string) {
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"encryption-algorithm":      {"ipsec_proposal_encryption", "IPSec proposal encryption", false},
+		"authentication-algorithms": {"ipsec_proposal_authentication", "IPSec proposal authentication", false},
+		"pfs-group":                 {"ipsec_proposal_pfs", "IPSec proposal PFS", false},
+		"lifetime":                  {"ipsec_proposal_lifetime", "IPSec proposal lifetime", true},
+	}
+
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val)
+			} else {
+				value = 1.0
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		}
+	}
+
+	if rec["disabled"] != trueStr {
+		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+	} else {
+		mb.GaugeVal(ch, "ipsec_proposal_enabled", "IPSec proposal enabled status", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+	}
+
+	if comment, ok := rec["comment"]; ok && comment != "" {
+		mb.Info(ch, "ipsec_proposal_info", "Information about IPSec proposal",
+			[]string{"name", "encryption_algorithm", "authentication_algorithms"},
+			rec)
+	}
+}
+
+func collectIPSecPolicy(mb *MetricBuilder, ch chan<- prometheus.Metric, rec map[string]string, labelKeysWithRouter []string, routerID map[string]string) {
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"tunnel":      {"ipsec_policy_tunnel", "IPSec policy tunnel", false},
+		"src-address": {"ipsec_policy_src_address", "IPSec policy source address", false},
+		"dst-address": {"ipsec_policy_dst_address", "IPSec policy destination address", false},
+		"protocol":    {"ipsec_policy_protocol", "IPSec policy protocol", false},
+		"dst-port":    {"ipsec_policy_dst_port", "IPSec policy destination port", true},
+		"action":      {"ipsec_policy_action", "IPSec policy action", false},
+		"sa-limit":    {"ipsec_policy_sa_limit", "IPSec policy SA limit", true},
+	}
+
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val)
+			} else {
+				value = 1.0
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+		}
+	}
+
+	if rec["disabled"] != trueStr {
+		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 1.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+	} else {
+		mb.GaugeVal(ch, "ipsec_policy_enabled", "IPSec policy enabled status", 0.0, labelKeysWithRouter, []string{routerID["router_id"], rec["name"], ""})
+	}
+
+	if comment, ok := rec["comment"]; ok && comment != "" {
+		mb.Info(ch, "ipsec_policy_info", "Information about IPSec policy",
+			[]string{"name", "src_address", "dst_address", "action"},
+			rec)
+	}
 }

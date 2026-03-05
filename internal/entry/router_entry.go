@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/eleboucher/mktxp/internal/config"
-	"github.com/eleboucher/mktxp/internal/routeros"
+	routeros "github.com/eleboucher/mktxp/internal/routeros"
 	"github.com/eleboucher/mktxp/internal/utils"
 )
 

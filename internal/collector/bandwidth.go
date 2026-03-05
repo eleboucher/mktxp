@@ -35,20 +35,27 @@ func (c *BandwidthCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
 
-		if _, ok := rec["cpu"]; ok && rec["cpu"] != "" {
-			mb.GaugeVal(ch, "bandwidth_cpu_score", "Bandwidth test CPU score", ParseFloat(rec["cpu"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"cpu":     {"bandwidth_cpu_score", "Bandwidth test CPU score", true},
+			"write":   {"bandwidth_write_speed", "Bandwidth test write speed in MB/s", true},
+			"read":    {"bandwidth_read_speed", "Bandwidth test read speed in MB/s", true},
+			"latency": {"bandwidth_latency", "Bandwidth test latency in ms", true},
 		}
 
-		if _, ok := rec["write"]; ok && rec["write"] != "" {
-			mb.GaugeVal(ch, "bandwidth_write_speed", "Bandwidth test write speed in MB/s", ParseFloat(rec["write"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["read"]; ok && rec["read"] != "" {
-			mb.GaugeVal(ch, "bandwidth_read_speed", "Bandwidth test read speed in MB/s", ParseFloat(rec["read"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["latency"]; ok && rec["latency"] != "" {
-			mb.GaugeVal(ch, "bandwidth_latency", "Bandwidth test latency in ms", ParseFloat(rec["latency"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, []string{e.RouterID["router_id"]})
+			}
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {

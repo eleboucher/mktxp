@@ -34,12 +34,25 @@ func (c *DNSCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 	mb := NewMetricBuilder(e)
 	rec := TrimRecord(records[0], nil)
 
-	if val, ok := rec["cache_size"]; ok {
-		mb.GaugeVal(ch, "dns_info", "DNS info", ParseFloat(val)*1024, []string{"property"}, []string{"cache_size"})
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"cache_size": {"dns_info", "DNS cache size in bytes", true},
+		"cache_used": {"dns_info", "DNS cache usage in bytes", true},
 	}
 
-	if val, ok := rec["cache_used"]; ok {
-		mb.GaugeVal(ch, "dns_info", "DNS info", ParseFloat(val)*1024, []string{"property"}, []string{"cache_used"})
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val) * 1024
+			} else {
+				value = 1
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, []string{"property"}, []string{key})
+		}
 	}
 
 	return nil

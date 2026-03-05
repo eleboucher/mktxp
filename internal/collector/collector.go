@@ -12,7 +12,7 @@ import (
 type Collector interface {
 	Name() string
 	Describe(ch chan<- *prometheus.Desc)
-	Collect(ctx context.Context, entry *entry.RouterEntry, ch chan<- prometheus.Metric) error
+	Collect(ctx context.Context, e *entry.RouterEntry, ch chan<- prometheus.Metric) error
 }
 
 type Registry struct {

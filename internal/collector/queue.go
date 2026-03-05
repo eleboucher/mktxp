@@ -22,12 +22,10 @@ func (c *QueueCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 
 	mb := NewMetricBuilder(e)
 
-	// Queue tree
 	if err := c.collectTree(ctx, e, mb, ch); err != nil {
 		slog.Error("queue tree collect failed", "router", e.RouterName, "err", err)
 	}
 
-	// Simple queue
 	if err := c.collectSimple(ctx, e, mb, ch); err != nil {
 		slog.Error("queue simple collect failed", "router", e.RouterName, "err", err)
 	}
@@ -43,12 +41,34 @@ func (c *QueueCollector) collectTree(ctx context.Context, e *entry.RouterEntry, 
 	}
 
 	keys := []string{"name", "bytes", "queued_bytes", "dropped", "rate"}
+
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"bytes":        {"queue_tree_bytes", "Number of processed bytes", true},
+		"queued_bytes": {"queue_tree_queued_bytes", "Number of queued bytes", true},
+		"dropped":      {"queue_tree_dropped", "Number of dropped bytes", true},
+		"rate":         {"queue_tree_rates", "Average passing data rate (bytes/s)", true},
+	}
+
 	for _, raw := range records {
 		rec := TrimRecord(raw, keys)
-		mb.Counter(ch, "queue_tree_rates", "Average passing data rate (bytes/s)", "rate", []string{"name"}, rec)
-		mb.Counter(ch, "queue_tree_bytes", "Number of processed bytes", "bytes", []string{"name"}, rec)
-		mb.Counter(ch, "queue_tree_queued_bytes", "Number of queued bytes", "queued_bytes", []string{"name"}, rec)
-		mb.Counter(ch, "queue_tree_dropped", "Number of dropped bytes", "dropped", []string{"name"}, rec)
+		labelKeys := []string{"name"}
+		labelVals := []string{rec["name"]}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+			}
+		}
 	}
 	return nil
 }
@@ -64,23 +84,60 @@ func (c *QueueCollector) collectSimple(ctx context.Context, e *entry.RouterEntry
 		rec := TrimRecord(raw, nil)
 		name := rec["name"]
 
-		// Simple queue fields are "upload/download" — split them.
 		split := splitSimpleQueue(rec)
 		split["name"] = name
 
-		mb.Counter(ch, "queue_simple_rates_upload", "Average upload data rate (bytes/s)", "rate_up", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_rates_download", "Average download data rate (bytes/s)", "rate_down", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_bytes_upload", "Upload processed bytes", "bytes_up", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_bytes_download", "Download processed bytes", "bytes_down", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_queued_bytes_upload", "Upload queued bytes", "queued_bytes_up", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_queued_bytes_download", "Download queued bytes", "queued_bytes_down", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_dropped_upload", "Upload dropped bytes", "dropped_up", []string{"name"}, split)
-		mb.Counter(ch, "queue_simple_dropped_download", "Download dropped bytes", "dropped_down", []string{"name"}, split)
+		metricMapUpload := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"rate_up":         {"queue_simple_rates_upload", "Average upload data rate (bytes/s)", true},
+			"bytes_up":        {"queue_simple_bytes_upload", "Upload processed bytes", true},
+			"queued_bytes_up": {"queue_simple_queued_bytes_upload", "Upload queued bytes", true},
+			"dropped_up":      {"queue_simple_dropped_upload", "Upload dropped bytes", true},
+		}
+
+		metricMapDownload := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"rate_down":         {"queue_simple_rates_download", "Average download data rate (bytes/s)", true},
+			"bytes_down":        {"queue_simple_bytes_download", "Download processed bytes", true},
+			"queued_bytes_down": {"queue_simple_queued_bytes_download", "Download queued bytes", true},
+			"dropped_down":      {"queue_simple_dropped_download", "Download dropped bytes", true},
+		}
+
+		labelKeys := []string{"name"}
+
+		for key, meta := range metricMapUpload {
+			if val, ok := split[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{name})
+			}
+		}
+
+		for key, meta := range metricMapDownload {
+			if val, ok := split[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{name})
+			}
+		}
 	}
 	return nil
 }
 
-// splitSimpleQueue expands "value_up/value_down" RouterOS fields into separate keys.
 func splitSimpleQueue(rec map[string]string) map[string]string {
 	out := make(map[string]string, len(rec)*2)
 	for k, v := range rec {

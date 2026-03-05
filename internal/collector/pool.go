@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strconv"
 
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,14 +59,12 @@ func collectPoolMetrics(
 		return err
 	}
 
-	// Initialize all pool counts to 0.
 	poolCounts := make(map[string]float64, len(poolRecords))
 	for _, raw := range poolRecords {
 		record := TrimRecord(raw, []string{"name"})
 		poolCounts[record["name"]] = 0
 	}
 
-	// Count used addresses per pool.
 	usedRecords, err := e.APIConn.Run(ctx, poolUsedAPI, "=.proplist=pool")
 	if err != nil {
 		return err
@@ -76,12 +75,30 @@ func collectPoolMetrics(
 		poolCounts[pool]++
 	}
 
-	// Emit one gauge per pool.
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"count": {metricName, helpText, true},
+	}
+
 	for pool, count := range poolCounts {
-		mb.GaugeVal(ch, metricName, helpText,
-			count,
-			[]string{"pool"}, []string{pool},
-		)
+		rec := map[string]string{"count": strconv.FormatFloat(count, 'f', 0, 64)}
+		labelKeys := []string{"pool"}
+		labelVals := []string{pool}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1.0
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+			}
+		}
 	}
 
 	return nil

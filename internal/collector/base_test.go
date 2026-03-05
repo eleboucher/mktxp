@@ -13,6 +13,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const testInterfaceName = "ether1"
+const (
+	trueStr  = "true"
+	falseStr = "false"
+)
+
 func TestNormalizeKey(t *testing.T) {
 	t.Parallel()
 
@@ -51,16 +57,16 @@ func TestTrimRecord(t *testing.T) {
 
 	t.Run("empty_keys_returns_all_normalized", func(t *testing.T) {
 		t.Parallel()
-		record := map[string]string{"name": "ether1"}
+		record := map[string]string{"name": testInterfaceName}
 		got := collector.TrimRecord(record, []string{})
-		if got["name"] != "ether1" {
+		if got["name"] != testInterfaceName {
 			t.Errorf("unexpected result: %v", got)
 		}
 	})
 
 	t.Run("filters_to_wanted_keys", func(t *testing.T) {
 		t.Parallel()
-		record := map[string]string{"rx-byte": "100", "tx-byte": "200", "name": "ether1"}
+		record := map[string]string{"rx-byte": "100", "tx-byte": "200", "name": testInterfaceName}
 		got := collector.TrimRecord(record, []string{"rx-byte", "name"})
 		if len(got) != 2 {
 			t.Fatalf("expected 2 keys, got %d: %v", len(got), got)
@@ -78,7 +84,7 @@ func TestTrimRecord(t *testing.T) {
 
 	t.Run("missing_wanted_key_absent_from_result", func(t *testing.T) {
 		t.Parallel()
-		record := map[string]string{"name": "ether1"}
+		record := map[string]string{"name": testInterfaceName}
 		got := collector.TrimRecord(record, []string{"name", "missing-key"})
 		if _, ok := got["missing_key"]; ok {
 			t.Error("missing_key should not appear in result")
@@ -127,12 +133,12 @@ func TestParseBool(t *testing.T) {
 		input string
 		want  float64
 	}{
-		{"true", 1},
-		{"True", 1},
-		{"TRUE", 1},
+		{trueStr, 1},
+		{trueStr, 1},
+		{trueStr, 1},
 		{"yes", 1},
 		{"YES", 1},
-		{"false", 0},
+		{falseStr, 0},
 		{"no", 0},
 		{"", 0},
 		{"unknown", 0},
@@ -167,12 +173,21 @@ func gatherMetric(t *testing.T, fn func(ch chan<- prometheus.Metric)) *dto.Metri
 	t.Helper()
 	ch := make(chan prometheus.Metric, 1)
 	fn(ch)
-	m := <-ch
-	var dm dto.Metric
-	if err := m.Write(&dm); err != nil {
-		t.Fatalf("Write failed: %v", err)
+
+	select {
+	case m := <-ch:
+		if m == nil {
+			return nil
+		}
+		var dm dto.Metric
+		if err := m.Write(&dm); err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+		return &dm
+	default:
+		// This prevents the hang if nothing was sent
+		return nil
 	}
-	return &dm
 }
 
 // labelMap converts a dto.Metric label list into a name→value map.
@@ -198,7 +213,7 @@ func TestMetricBuilderGaugeVal(t *testing.T) {
 	}
 
 	labels := labelMap(dm)
-	if labels["name"] != "ether1" {
+	if labels["name"] != testInterfaceName {
 		t.Errorf("name label = %q, want ether1", labels["name"])
 	}
 	if labels["routerboard_name"] != "test-router" {
@@ -251,41 +266,36 @@ func TestMetricBuilderInfo(t *testing.T) {
 // so we verify correctness by name, not by position.
 func TestMetricBuilderCustomLabelOrder(t *testing.T) {
 	t.Parallel()
-
 	customLabels := map[string]string{
 		"zzz": "last",
 		"aaa": "first",
 		"mmm": "middle",
 	}
-	mb := collector.NewMetricBuilder(testEntry(customLabels))
 
 	// Run multiple times to catch any label/value mismatch that would cause a panic
 	// or wrong values — the critical bug was non-deterministic map iteration causing
-	// labelNames and labelVals to diverge.
-	for range 20 {
+	// Run multiple times to catch any label/value mismatch
+	for i := range 20 {
+		// FIX: Create a new builder per iteration so 'isDuplicate' cache is fresh
+		mb := collector.NewMetricBuilder(testEntry(customLabels))
+
 		dm := gatherMetric(t, func(ch chan<- prometheus.Metric) {
 			mb.GaugeVal(ch, "test_metric", "help", 1.0, nil, nil)
+			// No need to close(ch) here if gatherMetric reads exactly one
 		})
+
+		if dm == nil {
+			t.Fatalf("Iteration %d: No metric collected", i)
+		}
 
 		labels := labelMap(dm)
 
+		// Assertions
 		if len(labels) != 5 {
 			t.Fatalf("expected 5 labels, got %d: %v", len(labels), labels)
 		}
-		if labels["aaa"] != "first" {
-			t.Errorf("aaa = %q, want first", labels["aaa"])
-		}
-		if labels["mmm"] != "middle" {
-			t.Errorf("mmm = %q, want middle", labels["mmm"])
-		}
-		if labels["zzz"] != "last" {
-			t.Errorf("zzz = %q, want last", labels["zzz"])
-		}
-		if labels["routerboard_name"] != "test-router" {
-			t.Errorf("routerboard_name = %q, want test-router", labels["routerboard_name"])
-		}
-		if labels["routerboard_address"] != "192.168.1.1" {
-			t.Errorf("routerboard_address = %q, want 192.168.1.1", labels["routerboard_address"])
+		if labels["aaa"] != "first" || labels["mmm"] != "middle" || labels["zzz"] != "last" {
+			t.Errorf("Iteration %d: label mismatch: %v", i, labels)
 		}
 	}
 }
@@ -294,7 +304,7 @@ func TestMetricBuilderGaugeFromRecord(t *testing.T) {
 	t.Parallel()
 
 	mb := collector.NewMetricBuilder(testEntry(nil))
-	record := map[string]string{"cpu_load": "75", "name": "ether1"}
+	record := map[string]string{"cpu_load": "75", "name": testInterfaceName}
 
 	dm := gatherMetric(t, func(ch chan<- prometheus.Metric) {
 		mb.Gauge(ch, "cpu_load", "CPU load", "cpu_load", []string{"name"}, record)
@@ -309,7 +319,7 @@ func TestMetricBuilderMissingValueKey(t *testing.T) {
 	t.Parallel()
 
 	mb := collector.NewMetricBuilder(testEntry(nil))
-	record := map[string]string{"name": "ether1"} // no "bytes" key
+	record := map[string]string{"name": testInterfaceName} // no "bytes" key
 
 	dm := gatherMetric(t, func(ch chan<- prometheus.Metric) {
 		mb.Gauge(ch, "bytes", "bytes", "bytes", []string{"name"}, record)

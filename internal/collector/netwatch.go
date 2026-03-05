@@ -41,13 +41,11 @@ func (c *NetwatchCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	var trimmed []map[string]string
 	for _, raw := range records {
 		rec := TrimRecord(raw, wantedKeys)
-		// Translate status: "up" → 1, else 0
 		if rec["status"] == "up" {
 			rec["status"] = "1"
 		} else {
 			rec["status"] = "0"
 		}
-		// Translate RTT fields from RouterOS time strings to milliseconds
 		for _, k := range []string{"rtt_avg", "rtt_min", "rtt_max", "rtt_jitter", "rtt_stdev", "tcp_connect_time", "http_resp_time"} {
 			if v := rec[k]; v != "" {
 				rec[k] = floatStr(float64(utils.ParseTimedelta(v, true)))
@@ -63,32 +61,46 @@ func (c *NetwatchCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	infoLabels := []string{"host", "timeout", "interval", "since", "status", "comment", "name"}
 	for _, rec := range trimmed {
 		mb.Info(ch, "netwatch", "Netwatch info metrics", infoLabels, rec)
-		mb.Gauge(ch, "netwatch_status", "Netwatch status", "status", []string{"name", "type"}, rec)
-		mb.Gauge(ch, "netwatch_done_tests", "Netwatch done tests", "done_tests", []string{"name", "type"}, rec)
-		mb.Gauge(ch, "netwatch_failed_tests", "Netwatch failed tests", "failed_tests", []string{"name", "type"}, rec)
 
-		switch rec["type"] {
-		case "icmp":
-			mb.Gauge(ch, "netwatch_icmp_loss_count", "Netwatch ICMP loss count", "loss_count", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_loss_percent", "Netwatch ICMP loss percent", "loss_percent", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_rtt_avg_ms", "Netwatch ICMP round trip average", "rtt_avg", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_rtt_min_ms", "Netwatch ICMP round trip min", "rtt_min", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_rtt_max_ms", "Netwatch ICMP round trip max", "rtt_max", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_rtt_jitter_ms", "Netwatch ICMP round trip jitter", "rtt_jitter", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_icmp_rtt_stdev_ms", "Netwatch ICMP round trip stdev", "rtt_stdev", []string{"name", "type"}, rec)
-		case "tcp-conn":
-			mb.Gauge(ch, "netwatch_tcp_connect_time_ms", "Netwatch TCP connect time", "tcp_connect_time", []string{"name", "type"}, rec)
-		case "http-get", "https-get":
-			mb.Gauge(ch, "netwatch_http_status_code", "Netwatch HTTP status code", "http_status_code", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_http_resp_time", "Netwatch HTTP response time", "http_resp_time", []string{"name", "type"}, rec)
-			mb.Gauge(ch, "netwatch_tcp_connect_time_ms", "Netwatch TCP connect time", "tcp_connect_time", []string{"name", "type"}, rec)
+		labelKeys := []string{"name", "type"}
+		labelVals := []string{rec["name"], rec["type"]}
+
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"status":           {"netwatch_status", "Netwatch status", false},
+			"done_tests":       {"netwatch_done_tests", "Netwatch done tests", true},
+			"failed_tests":     {"netwatch_failed_tests", "Netwatch failed tests", true},
+			"loss_count":       {"netwatch_icmp_loss_count", "Netwatch ICMP loss count", true},
+			"loss_percent":     {"netwatch_icmp_loss_percent", "Netwatch ICMP loss percent", true},
+			"rtt_avg":          {"netwatch_icmp_rtt_avg_ms", "Netwatch ICMP round trip average", true},
+			"rtt_min":          {"netwatch_icmp_rtt_min_ms", "Netwatch ICMP round trip min", true},
+			"rtt_max":          {"netwatch_icmp_rtt_max_ms", "Netwatch ICMP round trip max", true},
+			"rtt_jitter":       {"netwatch_icmp_rtt_jitter_ms", "Netwatch ICMP round trip jitter", true},
+			"rtt_stdev":        {"netwatch_icmp_rtt_stdev_ms", "Netwatch ICMP round trip stdev", true},
+			"tcp_connect_time": {"netwatch_tcp_connect_time_ms", "Netwatch TCP connect time", true},
+			"http_status_code": {"netwatch_http_status_code", "Netwatch HTTP status code", true},
+			"http_resp_time":   {"netwatch_http_resp_time", "Netwatch HTTP response time", true},
+		}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+			}
 		}
 	}
 
 	return nil
 }
 
-// floatStr converts a float64 to its decimal string representation.
 func floatStr(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }

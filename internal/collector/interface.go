@@ -45,34 +45,55 @@ func (c *InterfaceCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 		"link_downs", "comment", "type",
 	}
 
+	metricGauges := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"running":  {"interface_running", "Current running status of the interface", false},
+		"disabled": {"interface_disabled", "Current disabled status of the interface", false},
+	}
+
+	metricCounters := map[string]string{
+		"rx_byte":    "interface_rx_byte",
+		"tx_byte":    "interface_tx_byte",
+		"rx_packet":  "interface_rx_packet",
+		"tx_packet":  "interface_tx_packet",
+		"rx_error":   "interface_rx_error",
+		"tx_error":   "interface_tx_error",
+		"rx_drop":    "interface_rx_drop",
+		"tx_drop":    "interface_tx_drop",
+		"link_downs": "link_downs",
+	}
+
 	for _, raw := range records {
 		record := TrimRecord(raw, wantedKeys)
 
-		// Apply interface name format per config.
 		formattedName := FormatInterfaceName(record["name"], record["comment"], e.ConfigEntry.InterfaceNameFormat)
 		record["name"] = formattedName
 
 		mb.Info(ch, "interface_comment", "The interface comment", []string{"name", "comment"}, record)
 		mb.Info(ch, "interface_type", "Interface type like ether, vrrp, eoip, gre-tunnel, ...", []string{"name", "type"}, record)
 
-		mb.GaugeVal(ch, "interface_running", "Current running status of the interface",
-			ParseBool(record["running"]),
-			[]string{"name"}, []string{record["name"]},
-		)
-		mb.GaugeVal(ch, "interface_disabled", "Current disabled status of the interface",
-			ParseBool(record["disabled"]),
-			[]string{"name"}, []string{record["name"]},
-		)
+		labelKeys := []string{"name"}
 
-		mb.Counter(ch, "interface_rx_byte", "Number of received bytes", "rx_byte", []string{"name"}, record)
-		mb.Counter(ch, "interface_tx_byte", "Number of transmitted bytes", "tx_byte", []string{"name"}, record)
-		mb.Counter(ch, "interface_rx_packet", "Number of packets received", "rx_packet", []string{"name"}, record)
-		mb.Counter(ch, "interface_tx_packet", "Number of transmitted packets", "tx_packet", []string{"name"}, record)
-		mb.Counter(ch, "interface_rx_error", "Number of packets received with an error", "rx_error", []string{"name"}, record)
-		mb.Counter(ch, "interface_tx_error", "Number of packets transmitted with an error", "tx_error", []string{"name"}, record)
-		mb.Counter(ch, "interface_rx_drop", "Number of received packets being dropped", "rx_drop", []string{"name"}, record)
-		mb.Counter(ch, "interface_tx_drop", "Number of transmitted packets being dropped", "tx_drop", []string{"name"}, record)
-		mb.Counter(ch, "link_downs", "Number of times link went down", "link_downs", []string{"name"}, record)
+		for key, meta := range metricGauges {
+			if val, ok := record[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = ParseBool(val)
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{record["name"]})
+			}
+		}
+
+		for rosKey, metricName := range metricCounters {
+			if val, ok := record[rosKey]; ok && val != "" {
+				mb.GaugeVal(ch, metricName, "Interface counter", ParseFloat(val), labelKeys, []string{record["name"]})
+			}
+		}
 	}
 
 	return nil

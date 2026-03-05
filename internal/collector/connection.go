@@ -52,7 +52,6 @@ func (c *ConnectionCollector) collectStats(ctx context.Context, e *entry.RouterE
 
 	byAddr := make(map[string]*stats)
 	for _, rec := range records {
-		// src-address is "IP:port" — take IP only
 		src := strings.SplitN(rec["src-address"], ":", 2)[0]
 		dst := fmt.Sprintf("%s(%s)", rec["dst-address"], rec["protocol"])
 

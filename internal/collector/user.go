@@ -32,7 +32,6 @@ func (c *UserCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	for _, raw := range records {
 		rec := TrimRecord(raw, append(labelKeys, "when"))
 
-		// Parse login timestamp; fall back to now on failure.
 		ts := float64(time.Now().Unix())
 		if raw["when"] != "" {
 			if t, err := time.ParseInLocation("2006-01-02 15:04:05", raw["when"], time.Local); err == nil {
@@ -44,6 +43,7 @@ func (c *UserCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		for i, k := range labelKeys {
 			labelVals[i] = rec[k]
 		}
+
 		mb.GaugeVal(ch, "active_users_info", "Active users login timestamp", ts, labelKeys, labelVals)
 	}
 

@@ -40,42 +40,61 @@ func (c *BFDCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]}
 
-		mb.GaugeVal(ch, "bfd_session_status", "BFD session status (1=up, 0=down)", func() float64 {
-			if rec["state"] == "active" || rec["state"] == "up" {
-				return 1
-			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"multiplier":           {"bfd_multiplier", "BFD detection multiplier", true},
+			"min_tx_interval":      {"bfd_min_tx_interval", "BFD minimum transmit interval (ms)", true},
+			"min_rx_interval":      {"bfd_min_rx_interval", "BFD minimum receive interval (ms)", true},
+			"remote-system-id":     {"bfd_remote_system_id", "BFD remote system ID", false},
+			"local-discriminator":  {"bfd_local_discriminator", "BFD local discriminator", true},
+			"remote-discriminator": {"bfd_remote_discriminator", "BFD remote discriminator", true},
+		}
 
-		if _, ok := rec["multiplier"]; ok && rec["multiplier"] != "" {
-			if v, err := strconv.ParseFloat(rec["multiplier"], 64); err == nil {
-				mb.GaugeVal(ch, "bfd_multiplier", "BFD detection multiplier", v, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					if key == "multiplier" {
+						if v, err := strconv.ParseFloat(val, 64); err == nil {
+							value = v
+						}
+					} else {
+						value = ParseFloat(val)
+					}
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
 		}
 
-		if _, ok := rec["min_tx_interval"]; ok && rec["min_tx_interval"] != "" {
-			mb.GaugeVal(ch, "bfd_min_tx_interval", "BFD minimum transmit interval (ms)", ParseFloat(rec["min_tx_interval"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
-		}
-
-		if _, ok := rec["min_rx_interval"]; ok && rec["min_rx_interval"] != "" {
-			mb.GaugeVal(ch, "bfd_min_rx_interval", "BFD minimum receive interval (ms)", ParseFloat(rec["min_rx_interval"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
-		}
-
-		if _, ok := rec["echo_mode"]; ok {
-			echoMode := 0.0
-			if strings.ToLower(rec["echo_mode"]) == "yes" || rec["echo_mode"] == "true" {
-				echoMode = 1
+		if state, ok := rec["state"]; ok {
+			sessionStatus := 0.0
+			if state == "active" || state == "up" {
+				sessionStatus = 1
 			}
-			mb.GaugeVal(ch, "bfd_echo_mode", "BFD echo mode enabled", echoMode, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
+			mb.GaugeVal(ch, "bfd_session_status", "BFD session status (1=up, 0=down)", sessionStatus, labelKeysWithRouter, labelVals)
+		}
+
+		if echoMode, ok := rec["echo_mode"]; ok {
+			echoEnabled := 0.0
+			if strings.ToLower(echoMode) == "yes" || echoMode == trueStr {
+				echoEnabled = 1
+			}
+			mb.GaugeVal(ch, "bfd_echo_mode", "BFD echo mode enabled", echoEnabled, labelKeysWithRouter, labelVals)
 		}
 
 		if _, ok := rec["disabled"]; ok {
 			disabled := 0.0
-			if rec["disabled"] == "true" {
+			if rec["disabled"] == trueStr {
 				disabled = 1
 			}
-			mb.GaugeVal(ch, "bfd_disabled", "BFD session disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
+			mb.GaugeVal(ch, "bfd_disabled", "BFD session disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
@@ -84,15 +103,9 @@ func (c *BFDCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 				rec)
 		}
 
-		for _, metric := range []struct{ name, key string }{
-			{"bfd_state", "state"},
-			{"bfd_remote_system_id", "remote-system-id"},
-			{"bfd_local_discriminator", "local-discriminator"},
-			{"bfd_remote_discriminator", "remote-discriminator"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "BFD "+strings.ToUpper(metric.key), ParseFloat(val), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"], rec["local_interface"]})
-			}
+		stateKey := "state"
+		if state, ok := rec[stateKey]; ok && state != "" {
+			mb.GaugeVal(ch, "bfd_state", "BFD state", ParseFloat(state), labelKeysWithRouter, labelVals)
 		}
 	}
 

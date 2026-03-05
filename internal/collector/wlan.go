@@ -39,66 +39,68 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["ssid"]}
 
-		mb.GaugeVal(ch, "wlan_status", "WLAN interface status (1=up, 0=down)", func() float64 {
-			if rec["running"] == "true" && rec["disabled"] != "true" {
-				return 1
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"ssid":             {"wlan_ssid", "WLAN SSID", false},
+			"bssid":            {"wlan_bssid", "WLAN BSSID", false},
+			"channel":          {"wlan_channel", "WLAN Channel", false},
+			"bridge-mode":      {"wlan_bridge_mode", "WLAN Bridge Mode", false},
+			"security-profile": {"wlan_security_profile", "WLAN Security Profile", false},
+			"channel-width":    {"wlan_channel_width", "WLAN channel width in MHz", true},
+			"frequency":        {"wlan_frequency", "WLAN operating frequency in MHz", true},
+			"tx-power":         {"wlan_tx_power", "WLAN transmit power in dBm", true},
+		}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
+		}
+
+		if status, ok := rec["running"]; ok {
+			wlanStatus := 0.0
+			if status == trueStr && rec["disabled"] != trueStr {
+				wlanStatus = 1
+			}
+			mb.GaugeVal(ch, "wlan_status", "WLAN interface status (1=up, 0=down)", wlanStatus, labelKeysWithRouter, labelVals)
+		}
 
 		if _, ok := rec["disabled"]; ok {
 			disabled := 0.0
-			if rec["disabled"] == "true" {
+			if rec["disabled"] == trueStr {
 				disabled = 1
 			}
-			mb.GaugeVal(ch, "wlan_disabled", "WLAN interface disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
+			mb.GaugeVal(ch, "wlan_disabled", "WLAN interface disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["band"]; ok && rec["band"] != "" {
-			mb.GaugeVal(ch, "wlan_band", "WLAN frequency band (2g/5g)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
+		infoFields := map[string]string{
+			"band":              "WLAN frequency band (2g/5g)",
+			"country":           "WLAN regulatory domain country",
+			"mode":              "WLAN operating mode (ap-bridge/station/etc)",
+			"wireless-protocol": "WLAN protocol (802.11a/b/g/n/ac/ax)",
 		}
 
-		if _, ok := rec["channel-width"]; ok && rec["channel-width"] != "" {
-			mb.GaugeVal(ch, "wlan_channel_width", "WLAN channel width in MHz", ParseFloat(rec["channel-width"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-		}
-
-		if _, ok := rec["frequency"]; ok && rec["frequency"] != "" {
-			mb.GaugeVal(ch, "wlan_frequency", "WLAN operating frequency in MHz", ParseFloat(rec["frequency"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-		}
-
-		if _, ok := rec["tx-power"]; ok && rec["tx-power"] != "" {
-			mb.GaugeVal(ch, "wlan_tx_power", "WLAN transmit power in dBm", ParseFloat(rec["tx-power"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-		}
-
-		if _, ok := rec["country"]; ok && rec["country"] != "" {
-			mb.GaugeVal(ch, "wlan_country", "WLAN regulatory domain country", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-		}
-
-		if _, ok := rec["mode"]; ok && rec["mode"] != "" {
-			mb.GaugeVal(ch, "wlan_mode", "WLAN operating mode (ap-bridge/station/etc)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-		}
-
-		if _, ok := rec["wireless-protocol"]; ok && rec["wireless-protocol"] != "" {
-			mb.GaugeVal(ch, "wlan_protocol", "WLAN protocol (802.11a/b/g/n/ac/ax)", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
+		for key, help := range infoFields {
+			if _, ok := rec[key]; ok && rec[key] != "" {
+				mb.GaugeVal(ch, "wlan_"+strings.ReplaceAll(key, "-", "_"), help, 1, labelKeysWithRouter, labelVals)
+			}
 		}
 
 		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
 			mb.Info(ch, "wlan_info", "Information about WLAN interface",
 				[]string{"name", "ssid", "band", "mode"},
 				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"wlan_ssid", "ssid"},
-			{"wlan_bssid", "bssid"},
-			{"wlan_channel", "channel"},
-			{"wlan_bridge_mode", "bridge-mode"},
-			{"wlan_security_profile", "security-profile"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "WLAN "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["ssid"]})
-			}
 		}
 	}
 

@@ -43,7 +43,6 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		"comment", "server", "expires_after", "client_id", "active_mac_address",
 	}
 
-	// Count active leases per server.
 	serverCounts := make(map[string]float64)
 	trimmed := make([]map[string]string, 0, len(records))
 	for _, raw := range records {
@@ -53,7 +52,6 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		serverCounts[server]++
 	}
 
-	// Emit one active-count gauge per server.
 	for server, count := range serverCounts {
 		mb.GaugeVal(ch, "dhcp_lease_active_count", "Number of active leases per DHCP server",
 			count,
@@ -61,12 +59,20 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 		)
 	}
 
-	// Emit per-lease info metrics if DHCPLease flag is set.
 	if e.ConfigEntry.DHCPLease {
 		leaseLabels := []string{
 			"active_address", "address", "mac_address", "host_name",
 			"comment", "server", "client_id", "active_mac_address",
 		}
+
+		metricMapLease := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"expires_after": {"dhcp_lease_info", "DHCP Active Leases", false},
+		}
+
 		for _, record := range trimmed {
 			expiresAfter := float64(utils.ParseMktUptime(record["expires_after"]))
 			labelVals := []string{
@@ -79,11 +85,12 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 				record["client_id"],
 				record["active_mac_address"],
 			}
-			mb.GaugeVal(ch, "dhcp_lease_info", "DHCP Active Leases",
-				expiresAfter,
-				leaseLabels,
-				labelVals,
-			)
+
+			for key, meta := range metricMapLease {
+				if key == "expires_after" {
+					mb.GaugeVal(ch, meta.name, meta.help, expiresAfter, leaseLabels, labelVals)
+				}
+			}
 		}
 	}
 

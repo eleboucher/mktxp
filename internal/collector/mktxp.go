@@ -28,69 +28,54 @@ func (c *MktxpCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
-
-		if _, ok := rec["uptime"]; ok && rec["uptime"] != "" {
-			mb.GaugeVal(ch, "system_uptime", "System uptime in seconds", ParseFloat(rec["uptime"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["version"]; ok && rec["version"] != "" {
-			mb.GaugeVal(ch, "system_version_info", "System version information", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["memory-total"]; ok && rec["memory-total"] != "" {
-			mb.GaugeVal(ch, "system_memory_total", "System total memory in MB", ParseFloat(rec["memory-total"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["memory-free"]; ok && rec["memory-free"] != "" {
-			mb.GaugeVal(ch, "system_memory_free", "System free memory in MB", ParseFloat(rec["memory-free"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["cpu-load"]; ok && rec["cpu-load"] != "" {
-			mb.GaugeVal(ch, "system_cpu_load", "System CPU load percentage", ParseFloat(rec["cpu-load"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["free-memory"]; ok && rec["free-memory"] != "" {
-			mb.GaugeVal(ch, "system_free_memory", "System free memory in MB", ParseFloat(rec["free-memory"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["total-memory"]; ok && rec["total-memory"] != "" {
-			mb.GaugeVal(ch, "system_total_memory", "System total memory in MB", ParseFloat(rec["total-memory"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["cpu-count"]; ok && rec["cpu-count"] != "" {
-			mb.GaugeVal(ch, "system_cpu_count", "System CPU core count", ParseFloat(rec["cpu-count"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["last-start-time"]; ok && rec["last-start-time"] != "" {
-			mb.GaugeVal(ch, "system_last_start_time", "System last start timestamp", ParseFloat(rec["last-start-time"]), labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["name"]; ok && rec["name"] != "" {
-			mb.GaugeVal(ch, "system_name_info", "System hostname information", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["architecture-name"]; ok && rec["architecture-name"] != "" {
-			mb.GaugeVal(ch, "system_architecture_info", "System architecture name", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["platform"]; ok && rec["platform"] != "" {
-			mb.GaugeVal(ch, "system_platform_info", "System platform information", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["board-name"]; ok && rec["board-name"] != "" {
-			mb.GaugeVal(ch, "system_board_name_info", "System board name information", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["serial-number"]; ok && rec["serial-number"] != "" {
-			mb.GaugeVal(ch, "system_serial_number_info", "System serial number information", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"]})
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
-			mb.Info(ch, "system_resource_info", "Information about system resources",
-				[]string{"name", "version", "architecture"},
-				rec)
-		}
+		c.collectSystemMetrics(mb, ch, rec, labelKeysWithRouter, e.RouterID["router_id"])
 	}
 
 	return nil
+}
+
+func (c *MktxpCollector) collectSystemMetrics(
+	mb *MetricBuilder,
+	ch chan<- prometheus.Metric,
+	rec map[string]string,
+	labelKeys []string,
+	routerID string,
+) {
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"uptime":            {"system_uptime", "System uptime in seconds", true},
+		"version":           {"system_version_info", "System version information", false},
+		"memory-total":      {"system_memory_total", "System total memory in MB", true},
+		"memory-free":       {"system_memory_free", "System free memory in MB", true},
+		"cpu-load":          {"system_cpu_load", "System CPU load percentage", true},
+		"free-memory":       {"system_free_memory", "System free memory in MB", true},
+		"total-memory":      {"system_total_memory", "System total memory in MB", true},
+		"cpu-count":         {"system_cpu_count", "System CPU core count", true},
+		"last-start-time":   {"system_last_start_time", "System last start timestamp", true},
+		"name":              {"system_name_info", "System hostname information", false},
+		"architecture-name": {"system_architecture_info", "System architecture name", false},
+		"platform":          {"system_platform_info", "System platform information", false},
+		"board-name":        {"system_board_name_info", "System board name information", false},
+		"serial-number":     {"system_serial_number_info", "System serial number information", false},
+	}
+
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val)
+			} else {
+				value = 1.0
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, []string{routerID})
+		}
+	}
+
+	if comment, ok := rec["comment"]; ok && comment != "" {
+		mb.Info(ch, "system_resource_info", "Information about system resources",
+			[]string{"name", "version", "architecture"}, rec)
+	}
 }

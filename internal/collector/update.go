@@ -34,16 +34,29 @@ func (c *SystemUpdateCollector) Collect(ctx context.Context, e *entry.RouterEntr
 	mb := NewMetricBuilder(e)
 	rec := TrimRecord(records[0], nil)
 
-	updateAvailable := 0.0
-	if status, ok := rec["status"]; ok && status == "New version is available" {
-		updateAvailable = 1.0
+	metricMap := map[string]struct {
+		name       string
+		help       string
+		parseFloat bool
+	}{
+		"latest_version": {"system_update_available", "Is there a newer version available", false},
 	}
 
-	mb.GaugeVal(ch, "system_update_available", "Is there a newer version available",
-		updateAvailable,
-		[]string{"newest_version"},
-		[]string{rec["latest_version"]},
-	)
+	for key, meta := range metricMap {
+		if val, ok := rec[key]; ok && val != "" {
+			var value float64
+			if meta.parseFloat {
+				value = ParseFloat(val)
+			} else {
+				if rec["status"] == "New version is available" {
+					value = 1
+				} else {
+					value = 0
+				}
+			}
+			mb.GaugeVal(ch, meta.name, meta.help, value, []string{"newest_version"}, []string{rec["latest_version"]})
+		}
+	}
 
 	return nil
 }

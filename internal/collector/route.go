@@ -48,7 +48,6 @@ func (c *RouteCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 
 var routeProtocols = []string{"dynamic", "connect", "static", "bgp", "ospf"}
 
-// collectRouteMetrics fetches route records, counts total and per-protocol, then emits gauges.
 func collectRouteMetrics(
 	ctx context.Context,
 	e *entry.RouterEntry,
@@ -72,7 +71,7 @@ func collectRouteMetrics(
 	for _, raw := range records {
 		record := TrimRecord(raw, routeProtocols)
 		for _, proto := range routeProtocols {
-			if record[proto] == "true" {
+			if record[proto] == trueStr {
 				protocolCounts[proto]++
 			}
 		}

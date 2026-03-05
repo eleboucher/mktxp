@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/eleboucher/mktxp/internal/utils"
@@ -12,6 +13,11 @@ import (
 )
 
 const namespace = "mktxp"
+
+const (
+	trueStr  = "true"
+	falseStr = "false"
+)
 
 // NormalizeKey replaces RouterOS key separators (. and -) with underscores.
 func NormalizeKey(key string) string {
@@ -30,7 +36,7 @@ func ParseFloat(s string) float64 {
 
 func ParseBool(s string) float64 {
 	switch strings.ToLower(s) {
-	case "true", "yes":
+	case trueStr, "yes":
 		return 1
 	default:
 		return 0
@@ -73,6 +79,7 @@ type MetricBuilder struct {
 	customKeys   []string // sorted for deterministic label ordering
 	customLabels map[string]string
 
+	mu      sync.Mutex
 	emitted map[string]map[string]struct{}
 }
 
@@ -202,6 +209,8 @@ func (b *MetricBuilder) isDuplicate(name string, labelVals []string) bool {
 	// Using a null byte separator prevents collision (e.g. "a","b" vs "ab","")
 	key := strings.Join(labelVals, "\x00")
 
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if _, ok := b.emitted[name]; !ok {
 		b.emitted[name] = make(map[string]struct{})
 	}

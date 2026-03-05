@@ -35,7 +35,6 @@ func (c *SwitchPortCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
 
-		// Sum each CPU lane
 		for k, v := range rec {
 			if strings.Contains(v, ",") {
 				parts := strings.Split(v, ",")
@@ -49,48 +48,48 @@ func (c *SwitchPortCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 			}
 		}
 
-		// Standard Counters
-		mb.Counter(ch, "switch_rx_bytes", "Total count of received bytes", "rx_bytes", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_bytes", "Total count of transmitted bytes", "tx_bytes", labelKeys, rec)
-		mb.Counter(ch, "switch_rx_packet", "Total count of received packets", "rx_packet", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_packet", "Total count of transmitted packets", "tx_packet", labelKeys, rec)
-
-		// Broadcast/Multicast/Pause
-		mb.Counter(ch, "switch_rx_broadcast", "Total count of received broadcast frames", "rx_broadcast", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_broadcast", "Total count of transmitted broadcast frames", "tx_broadcast", labelKeys, rec)
-		mb.Counter(ch, "switch_rx_multicast", "Total count of received multicast frames", "rx_multicast", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_multicast", "Total count of transmitted multicast frames", "tx_multicast", labelKeys, rec)
-		mb.Counter(ch, "switch_rx_pause", "Total count of received pause frames", "rx_pause", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_pause", "Total count of transmitted pause frames", "tx_pause", labelKeys, rec)
-
-		// Errors & Drops
-		mb.Counter(ch, "switch_rx_drop", "Total count of received dropped frames", "rx_drop", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_drop", "Total count of transmitted dropped frames", "tx_drop", labelKeys, rec)
-		mb.Counter(ch, "switch_rx_fcs_error", "Total count of received frames with incorrect checksum", "rx_fcs_error", labelKeys, rec)
-		mb.Counter(ch, "switch_rx_align_error", "Total count of received align error event", "rx_align_error", labelKeys, rec)
-		mb.Counter(ch, "switch_tx_collision", "Total count of transmitted frames that made collisions", "tx_collision", labelKeys, rec)
-
-		// Additional Error Counters (from Python switch_collector.py)
-		if _, ok := rec["rx_fragment"]; ok {
-			mb.Counter(ch, "switch_rx_fragment", "Total count of received fragment frames", "rx_fragment", labelKeys, rec)
-		}
-		if _, ok := rec["rx_overflow"]; ok {
-			mb.Counter(ch, "switch_rx_overflow", "Total count of received overflow frames", "rx_overflow", labelKeys, rec)
-		}
-		if _, ok := rec["tx_underrun"]; ok {
-			mb.Counter(ch, "switch_tx_underrun", "Total count of transmitted underrun frames", "tx_underrun", labelKeys, rec)
-		}
-		if _, ok := rec["tx_deferred"]; ok {
-			mb.Counter(ch, "switch_tx_deferred", "Total count of transmitted deferred frames", "tx_deferred", labelKeys, rec)
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"rx_bytes":         {"switch_rx_bytes", "Total count of received bytes", true},
+			"tx_bytes":         {"switch_tx_bytes", "Total count of transmitted bytes", true},
+			"rx_packet":        {"switch_rx_packet", "Total count of received packets", true},
+			"tx_packet":        {"switch_tx_packet", "Total count of transmitted packets", true},
+			"rx_broadcast":     {"switch_rx_broadcast", "Total count of received broadcast frames", true},
+			"tx_broadcast":     {"switch_tx_broadcast", "Total count of transmitted broadcast frames", true},
+			"rx_multicast":     {"switch_rx_multicast", "Total count of received multicast frames", true},
+			"tx_multicast":     {"switch_tx_multicast", "Total count of transmitted multicast frames", true},
+			"rx_pause":         {"switch_rx_pause", "Total count of received pause frames", true},
+			"tx_pause":         {"switch_tx_pause", "Total count of transmitted pause frames", true},
+			"rx_drop":          {"switch_rx_drop", "Total count of received dropped frames", true},
+			"tx_drop":          {"switch_tx_drop", "Total count of transmitted dropped frames", true},
+			"rx_fcs_error":     {"switch_rx_fcs_error", "Total count of received frames with incorrect checksum", true},
+			"rx_align_error":   {"switch_rx_align_error", "Total count of received align error event", true},
+			"tx_collision":     {"switch_tx_collision", "Total count of transmitted frames that made collisions", true},
+			"rx_fragment":      {"switch_rx_fragment", "Total count of received fragment frames", true},
+			"rx_overflow":      {"switch_rx_overflow", "Total count of received overflow frames", true},
+			"tx_underrun":      {"switch_tx_underrun", "Total count of transmitted underrun frames", true},
+			"tx_deferred":      {"switch_tx_deferred", "Total count of transmitted deferred frames", true},
+			"driver_rx_byte":   {"switch_driver_rx_byte", "Total count of received bytes (driver)", true},
+			"driver_tx_byte":   {"switch_driver_tx_byte", "Total count of transmitted bytes (driver)", true},
+			"driver_rx_packet": {"switch_driver_rx_packet", "Total count of received packets (driver)", true},
+			"driver_tx_packet": {"switch_driver_tx_packet", "Total count of transmitted packets (driver)", true},
 		}
 
-		// Driver Stats (often prefixed with 'driver' in Python output)
-		// If keys exist, we map them explicitly to match Python metric names
-		if _, ok := rec["driver_rx_byte"]; ok {
-			mb.Counter(ch, "switch_driver_rx_byte", "Total count of received bytes (driver)", "driver_rx_byte", labelKeys, rec)
-			mb.Counter(ch, "switch_driver_tx_byte", "Total count of transmitted bytes (driver)", "driver_tx_byte", labelKeys, rec)
-			mb.Counter(ch, "switch_driver_rx_packet", "Total count of received packets (driver)", "driver_rx_packet", labelKeys, rec)
-			mb.Counter(ch, "switch_driver_tx_packet", "Total count of transmitted packets (driver)", "driver_tx_packet", labelKeys, rec)
+		labelVals := []string{rec["name"]}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+			}
 		}
 	}
 

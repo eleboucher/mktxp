@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	gorouteros "github.com/go-routeros/routeros/v3"
+	"github.com/go-routeros/routeros/v3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -51,7 +51,7 @@ type Connection struct {
 	cfg ConnectionConfig
 
 	mu           sync.Mutex
-	client       *gorouteros.Client
+	client       *routeros.Client
 	lastFailure  time.Time
 	failureCount int
 }
@@ -93,7 +93,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	client, err := c.dial(ctx, username, password)
 	if err != nil {
 		c.recordFailure(time.Now())
-		return fmt.Errorf("routeros: connect %s@%s: %w", c.cfg.RouterName, c.cfg.Hostname, err)
+		return fmt.Errorf("routers: connect %s@%s: %w", c.cfg.RouterName, c.cfg.Hostname, err)
 	}
 
 	c.client = client
@@ -118,7 +118,7 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 	defer c.mu.Unlock()
 
 	if cl == nil {
-		return nil, fmt.Errorf("routeros: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
+		return nil, fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
 	}
 
 	reply, err := cl.RunArgsContext(ctx, sentence)
@@ -145,7 +145,7 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 	return result, nil
 }
 
-func (c *Connection) dial(ctx context.Context, username, password string) (*gorouteros.Client, error) {
+func (c *Connection) dial(ctx context.Context, username, password string) (*routeros.Client, error) {
 	addr := fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port)
 	timeout := c.cfg.SocketTimeout
 	if timeout == 0 {
@@ -156,7 +156,7 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*goro
 	defer cancel()
 
 	if !c.cfg.UseSSL {
-		return gorouteros.DialContext(ctx, addr, username, password)
+		return routeros.DialContext(ctx, addr, username, password)
 	}
 
 	slog.Warn("Connecting with TLS", "host", c.cfg.Hostname, "insecure", c.cfg.NoSSLCertificate)
@@ -166,7 +166,7 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*goro
 		tlsCfg.InsecureSkipVerify = true //nolint:gosec
 	}
 
-	return gorouteros.DialTLSContext(ctx, addr, username, password, tlsCfg)
+	return routeros.DialTLSContext(ctx, addr, username, password, tlsCfg)
 }
 
 func (c *Connection) resolveCredentials() (string, string, error) {
@@ -175,11 +175,11 @@ func (c *Connection) resolveCredentials() (string, string, error) {
 	}
 	data, err := os.ReadFile(c.cfg.CredentialsFile)
 	if err != nil {
-		return "", "", fmt.Errorf("routeros: read credentials file %q: %w", c.cfg.CredentialsFile, err)
+		return "", "", fmt.Errorf("routers: read credentials file %q: %w", c.cfg.CredentialsFile, err)
 	}
 	var creds credentialsFile
 	if err := yaml.Unmarshal(data, &creds); err != nil {
-		return "", "", fmt.Errorf("routeros: parse credentials file %q: %w", c.cfg.CredentialsFile, err)
+		return "", "", fmt.Errorf("routers: parse credentials file %q: %w", c.cfg.CredentialsFile, err)
 	}
 	username := c.cfg.Username
 	password := c.cfg.Password

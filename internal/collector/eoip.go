@@ -39,57 +39,69 @@ func (c *EOIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := append([]string{"router_id"}, labelKeys...)
+		labelVals := []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]}
 
-		mb.GaugeVal(ch, "eoip_status", "EOIP tunnel status (1=running, 0=stopped)", func() float64 {
-			if rec["running"] == "true" && rec["disabled"] != "true" {
-				return 1
+		metricMap := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"remote-address": {"eoip_remote_address", "EOIP remote address", false},
+			"local-address":  {"eoip_local_address", "EOIP local address", false},
+			"interface":      {"eoip_interface", "EOIP interface", false},
+			"bandwidth":      {"eoip_bandwidth", "EOIP bandwidth", true},
+			"mtu":            {"eoip_mtu", "EOIP MTU size in bytes", true},
+		}
+
+		for key, meta := range metricMap {
+			if val, ok := rec[key]; ok && val != "" {
+				var value float64
+				if meta.parseFloat {
+					value = ParseFloat(val)
+				} else {
+					value = 1
+				}
+				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeysWithRouter, labelVals)
 			}
-			return 0
-		}(), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+		}
 
-		if _, ok := rec["disabled"]; ok {
+		if rec["running"] == trueStr && rec["disabled"] != trueStr {
+			mb.GaugeVal(ch, "eoip_status", "EOIP tunnel status (1=running, 0=stopped)", 1, labelKeysWithRouter, labelVals)
+		} else {
+			mb.GaugeVal(ch, "eoip_status", "EOIP tunnel status (1=running, 0=stopped)", 0, labelKeysWithRouter, labelVals)
+		}
+
+		if disabledVal, ok := rec["disabled"]; ok {
 			disabled := 0.0
-			if rec["disabled"] == "true" {
+			if disabledVal == trueStr {
 				disabled = 1
 			}
-			mb.GaugeVal(ch, "eoip_disabled", "EOIP tunnel disabled status", disabled, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "eoip_disabled", "EOIP tunnel disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["fast-path"]; ok {
+		if fastPathVal, ok := rec["fast-path"]; ok {
 			fastPath := 0.0
-			if rec["fast-path"] == "true" {
+			if fastPathVal == trueStr {
 				fastPath = 1
 			}
-			mb.GaugeVal(ch, "eoip_fast_path", "EOIP fast path enabled status", fastPath, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+			mb.GaugeVal(ch, "eoip_fast_path", "EOIP fast path enabled status", fastPath, labelKeysWithRouter, labelVals)
 		}
 
-		if _, ok := rec["arp"]; ok && rec["arp"] != "" {
-			mb.GaugeVal(ch, "eoip_arp", "EOIP ARP configuration", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+		infoFields := map[string]string{
+			"arp":            "EOIP ARP configuration",
+			"interface-type": "EOIP interface type",
 		}
 
-		if _, ok := rec["interface-type"]; ok && rec["interface-type"] != "" {
-			mb.GaugeVal(ch, "eoip_interface_type", "EOIP interface type", 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
+		for key, help := range infoFields {
+			if _, ok := rec[key]; ok && rec[key] != "" {
+				mb.GaugeVal(ch, "eoip_"+strings.ReplaceAll(key, "-", "_"), help, 1, labelKeysWithRouter, labelVals)
+			}
 		}
 
-		if _, ok := rec["mtu"]; ok && rec["mtu"] != "" {
-			mb.GaugeVal(ch, "eoip_mtu", "EOIP MTU size in bytes", ParseFloat(rec["mtu"]), labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-		}
-
-		if _, ok := rec["comment"]; ok && rec["comment"] != "" {
+		if comment, ok := rec["comment"]; ok && comment != "" {
 			mb.Info(ch, "eoip_info", "Information about EOIP tunnel",
 				[]string{"name", "remote_address", "interface_type"},
 				rec)
-		}
-
-		for _, metric := range []struct{ name, key string }{
-			{"eoip_remote_address", "remote-address"},
-			{"eoip_local_address", "local-address"},
-			{"eoip_interface", "interface"},
-			{"eoip_bandwidth", "bandwidth"},
-		} {
-			if val, ok := rec[metric.key]; ok && val != "" {
-				mb.GaugeVal(ch, metric.name, "EOIP "+strings.ToUpper(metric.key), 1.0, labelKeysWithRouter, []string{e.RouterID["router_id"], rec["name"], rec["remote_address"]})
-			}
 		}
 	}
 
