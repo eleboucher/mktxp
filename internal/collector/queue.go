@@ -45,15 +45,18 @@ func (c *QueueCollector) collectTree(ctx context.Context, e *entry.RouterEntry, 
 
 	keys := []string{"name", "bytes", "queued_bytes", "dropped", "rate"}
 
-	metricMap := map[string]struct {
+	metricCounters := map[string]string{
+		"bytes":        "queue_tree_bytes",
+		"queued_bytes": "queue_tree_queued_bytes",
+		"dropped":      "queue_tree_dropped",
+	}
+
+	metricGauges := map[string]struct {
 		name       string
 		help       string
 		parseFloat bool
 	}{
-		"bytes":        {"queue_tree_bytes", "Number of processed bytes", true},
-		"queued_bytes": {"queue_tree_queued_bytes", "Number of queued bytes", true},
-		"dropped":      {"queue_tree_dropped", "Number of dropped bytes", true},
-		"rate":         {"queue_tree_rates", "Average passing data rate (bytes/s)", true},
+		"rate": {"queue_tree_rates", "Average passing data rate (bytes/s)", true},
 	}
 
 	for _, raw := range records {
@@ -61,7 +64,13 @@ func (c *QueueCollector) collectTree(ctx context.Context, e *entry.RouterEntry, 
 		labelKeys := []string{"name"}
 		labelVals := []string{rec["name"]}
 
-		for key, meta := range metricMap {
+		for rosKey, metricName := range metricCounters {
+			if val, ok := rec[rosKey]; ok && val != "" {
+				mb.CounterVal(ch, metricName, "Number of processed bytes", ParseFloat(val), labelKeys, labelVals)
+			}
+		}
+
+		for key, meta := range metricGauges {
 			if val, ok := rec[key]; ok && val != "" {
 				var value float64
 				if meta.parseFloat {
@@ -90,31 +99,43 @@ func (c *QueueCollector) collectSimple(ctx context.Context, e *entry.RouterEntry
 		split := splitSimpleQueue(rec)
 		split["name"] = name
 
-		metricMapUpload := map[string]struct {
-			name       string
-			help       string
-			parseFloat bool
-		}{
-			"rate_up":         {"queue_simple_rates_upload", "Average upload data rate (bytes/s)", true},
-			"bytes_up":        {"queue_simple_bytes_upload", "Upload processed bytes", true},
-			"queued_bytes_up": {"queue_simple_queued_bytes_upload", "Upload queued bytes", true},
-			"dropped_up":      {"queue_simple_dropped_upload", "Upload dropped bytes", true},
+		metricCountersUpload := map[string]string{
+			"bytes_up":        "queue_simple_bytes_upload",
+			"queued_bytes_up": "queue_simple_queued_bytes_upload",
+			"dropped_up":      "queue_simple_dropped_upload",
 		}
 
-		metricMapDownload := map[string]struct {
+		metricGaugesUpload := map[string]struct {
 			name       string
 			help       string
 			parseFloat bool
 		}{
-			"rate_down":         {"queue_simple_rates_download", "Average download data rate (bytes/s)", true},
-			"bytes_down":        {"queue_simple_bytes_download", "Download processed bytes", true},
-			"queued_bytes_down": {"queue_simple_queued_bytes_download", "Download queued bytes", true},
-			"dropped_down":      {"queue_simple_dropped_download", "Download dropped bytes", true},
+			"rate_up": {"queue_simple_rates_upload", "Average upload data rate (bytes/s)", true},
+		}
+
+		metricCountersDownload := map[string]string{
+			"bytes_down":        "queue_simple_bytes_download",
+			"queued_bytes_down": "queue_simple_queued_bytes_download",
+			"dropped_down":      "queue_simple_dropped_download",
+		}
+
+		metricGaugesDownload := map[string]struct {
+			name       string
+			help       string
+			parseFloat bool
+		}{
+			"rate_down": {"queue_simple_rates_download", "Average download data rate (bytes/s)", true},
 		}
 
 		labelKeys := []string{"name"}
 
-		for key, meta := range metricMapUpload {
+		for rosKey, metricName := range metricCountersUpload {
+			if val, ok := split[rosKey]; ok && val != "" {
+				mb.CounterVal(ch, metricName, "Upload processed bytes", ParseFloat(val), labelKeys, []string{name})
+			}
+		}
+
+		for key, meta := range metricGaugesUpload {
 			if val, ok := split[key]; ok && val != "" {
 				var value float64
 				if meta.parseFloat {
@@ -126,7 +147,13 @@ func (c *QueueCollector) collectSimple(ctx context.Context, e *entry.RouterEntry
 			}
 		}
 
-		for key, meta := range metricMapDownload {
+		for rosKey, metricName := range metricCountersDownload {
+			if val, ok := split[rosKey]; ok && val != "" {
+				mb.CounterVal(ch, metricName, "Download processed bytes", ParseFloat(val), labelKeys, []string{name})
+			}
+		}
+
+		for key, meta := range metricGaugesDownload {
 			if val, ok := split[key]; ok && val != "" {
 				var value float64
 				if meta.parseFloat {

@@ -106,7 +106,7 @@ func collectFirewallChain(
 				} else {
 					value = 1.0
 				}
-				mb.GaugeVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
+				mb.CounterVal(ch, meta.name, meta.help, value, labelKeys, labelVals)
 			}
 		}
 	}

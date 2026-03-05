@@ -92,7 +92,7 @@ func (c *InterfaceCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 
 		for rosKey, metricName := range metricCounters {
 			if val, ok := record[rosKey]; ok && val != "" {
-				mb.GaugeVal(ch, metricName, "Interface counter", ParseFloat(val), labelKeys, []string{record["name"]})
+				mb.CounterVal(ch, metricName, "Interface counter", ParseFloat(val), labelKeys, []string{record["name"]})
 			}
 		}
 	}
