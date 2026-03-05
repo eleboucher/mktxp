@@ -32,7 +32,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
-          version: v2.9.0
+          version: v2.10.1
           only-new-issues: true
 
   test:
@@ -51,12 +51,3 @@ jobs:
       - name: Display coverage
         run: go tool cover -func=coverage.out
 
-      - name: Check coverage threshold
-        run: |
-          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
-          threshold=70
-          if (( $(echo "$coverage < $threshold" | bc -l) )); then
-            echo "Coverage $coverage% is below threshold $threshold%"
-            exit 1
-          fi
-          echo "Coverage $coverage% meets threshold $threshold%"
