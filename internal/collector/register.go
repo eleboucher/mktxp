@@ -8,7 +8,6 @@ func AllCollectors() []Collector {
 		NewIdentityCollector(),
 		NewInterfaceCollector(),
 		NewMonitorCollector(),
-		NewHWHealthCollector(),
 		NewPOECollector(),
 		NewDHCPCollector(),
 		NewPoolCollector(),
