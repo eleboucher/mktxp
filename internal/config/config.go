@@ -11,6 +11,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ApplyEnvOverrides applies environment variable overrides to router entries.
+func (h *ConfigHandler) ApplyEnvOverrides() error {
+	configurator := NewEnvConfigurator()
+	return configurator.ApplyRouterOverrides(h)
+}
+
+// ApplySystemEnvOverrides applies environment variable overrides to system config.
+func (h *ConfigHandler) ApplySystemEnvOverrides() error {
+	configurator := NewEnvConfigurator()
+	return configurator.ApplySystemOverrides(h)
+}
+
 //go:embed templates/mktxp.yaml templates/_mktxp.yaml
 var templateFS embed.FS
 

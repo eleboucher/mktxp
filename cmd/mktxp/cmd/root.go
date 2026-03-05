@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/eleboucher/mktxp/internal/config"
@@ -37,5 +38,13 @@ func initConfig() {
 	if err := config.Handler.Init(cfgDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing config: %v\n", err)
 		os.Exit(1)
+	}
+
+	if err := config.Handler.ApplySystemEnvOverrides(); err != nil {
+		slog.Warn("Failed to apply system env overrides", "error", err)
+	}
+
+	if err := config.Handler.ApplyEnvOverrides(); err != nil {
+		slog.Warn("Failed to apply router env overrides", "error", err)
 	}
 }
