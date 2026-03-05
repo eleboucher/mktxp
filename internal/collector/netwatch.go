@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -26,7 +27,7 @@ func (c *NetwatchCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	)
 	if err != nil {
 		slog.Error("netwatch collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("netwatch: %w", err)
 	}
 
 	wantedKeys := []string{

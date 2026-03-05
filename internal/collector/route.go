@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -30,6 +31,7 @@ func (c *RouteCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			"routes_protocol_count", "Number of routes per protocol in RIB",
 		); err != nil {
 			slog.Error("route collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv4 route: %w", err)
 		}
 	}
 
@@ -40,6 +42,7 @@ func (c *RouteCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 			"routes_protocol_count_ipv6", "Number of IPv6 routes per protocol in RIB",
 		); err != nil {
 			slog.Error("ipv6 route collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv6 route: %w", err)
 		}
 	}
 

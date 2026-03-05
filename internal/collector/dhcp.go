@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -33,7 +34,7 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	)
 	if err != nil {
 		slog.Error("dhcp lease collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("dhcp lease: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

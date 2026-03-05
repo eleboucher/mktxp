@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -22,7 +23,7 @@ func (c *PublicIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	records, err := e.APIConn.Run(ctx, "/ip/cloud/print", "=.proplist=public-address,public-address-ipv6,dns-name")
 	if err != nil {
 		slog.Error("public_ip collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("public_ip: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

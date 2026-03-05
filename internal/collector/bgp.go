@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -25,7 +26,7 @@ func (c *BGPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 	records, err := e.APIConn.Run(ctx, "/routing/bgp/session/print", "=.proplist=name,remote.address,remote.as,local.address,local.as,established,uptime,prefix-count,remote.messages,local.messages,remote.bytes,local.bytes")
 	if err != nil {
 		slog.Error("bgp collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("bgp collect: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

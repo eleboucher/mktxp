@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -23,7 +24,7 @@ func (c *POECollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 		"=.proplist=name,poe-out,poe-priority,poe-voltage,poe-out-status,poe-out-voltage,poe-out-current,poe-out-power")
 	if err != nil {
 		slog.Error("poe collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("poe: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

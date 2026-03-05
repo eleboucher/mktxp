@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -35,7 +36,7 @@ func (c *MonitorCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 	ifaces, err := e.APIConn.Run(ctx, "/interface/ethernet/print", "=.proplist=name,comment,running")
 	if err != nil {
 		slog.Error("monitor: list interfaces failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("monitor: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

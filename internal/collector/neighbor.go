@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -21,6 +22,7 @@ func (c *NeighborCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 		records, err := e.APIConn.Run(ctx, "/ip/neighbor/print", "=.proplist=address,interface,mac-address,identity")
 		if err != nil {
 			slog.Error("neighbor collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv4 neighbor: %w", err)
 		} else {
 			labels := []string{"address", "interface", "mac_address", "identity"}
 			for _, raw := range records {
@@ -33,6 +35,7 @@ func (c *NeighborCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 		records, err := e.APIConn.Run(ctx, "/ipv6/neighbor/print", "=.proplist=address,interface,mac-address,status,comment")
 		if err != nil {
 			slog.Error("ipv6 neighbor collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv6 neighbor: %w", err)
 		} else {
 			labels := []string{"address", "interface", "mac_address", "status", "comment"}
 			for _, raw := range records {

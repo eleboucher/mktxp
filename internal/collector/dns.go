@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -24,7 +25,7 @@ func (c *DNSCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch cha
 	records, err := e.APIConn.Run(ctx, "/ip/dns/print", "=.proplist=cache-size,cache-used")
 	if err != nil {
 		slog.Error("dns collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("dns: %w", err)
 	}
 
 	if len(records) == 0 {

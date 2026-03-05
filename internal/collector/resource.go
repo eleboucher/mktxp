@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -29,7 +30,7 @@ func (c *SystemResourceCollector) Collect(ctx context.Context, e *entry.RouterEn
 	)
 	if err != nil {
 		slog.Error("system resource collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("system_resource: %w", err)
 	}
 	if len(records) == 0 {
 		return nil

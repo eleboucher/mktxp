@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -24,7 +25,7 @@ func (c *SystemUpdateCollector) Collect(ctx context.Context, e *entry.RouterEntr
 	records, err := e.APIConn.Run(ctx, "/system/package/update/print", "=.proplist=status,latest-version,installed-version,channel")
 	if err != nil {
 		slog.Error("system update info collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("system_update: %w", err)
 	}
 
 	if len(records) == 0 {

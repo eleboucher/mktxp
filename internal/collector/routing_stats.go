@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -24,7 +25,7 @@ func (c *RoutingStatsCollector) Collect(ctx context.Context, e *entry.RouterEntr
 	records, err := e.APIConn.Run(ctx, "/routing/stats/process/print")
 	if err != nil {
 		slog.Error("routing stats collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("routing_stats: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

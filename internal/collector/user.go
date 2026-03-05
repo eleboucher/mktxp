@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -23,7 +24,7 @@ func (c *UserCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	records, err := e.APIConn.Run(ctx, "/user/active/print", "=.proplist=.id,name,when,address,via,group")
 	if err != nil {
 		slog.Error("user collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("user: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

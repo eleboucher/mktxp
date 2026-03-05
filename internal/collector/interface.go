@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -31,7 +32,7 @@ func (c *InterfaceCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 	)
 	if err != nil {
 		slog.Error("interface collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("interface: %w", err)
 	}
 
 	mb := NewMetricBuilder(e)

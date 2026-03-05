@@ -41,6 +41,7 @@ func (c *FirewallCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 		for _, chain := range firewallChains {
 			if err := collectFirewallChain(ctx, e, mb, ch, "/ip/firewall/"+chain.name+"/print", chain.metric, chain.help); err != nil {
 				slog.Error("firewall collect failed", "router", e.RouterName, "chain", chain.name, "err", err)
+				return fmt.Errorf("ipv4 firewall %s: %w", chain.name, err)
 			}
 		}
 	}
@@ -49,6 +50,7 @@ func (c *FirewallCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 		for _, chain := range firewallChains {
 			if err := collectFirewallChain(ctx, e, mb, ch, "/ipv6/firewall/"+chain.name+"/print", chain.metric+"_ipv6", chain.help+" (IPv6)"); err != nil {
 				slog.Error("ipv6 firewall collect failed", "router", e.RouterName, "chain", chain.name, "err", err)
+				return fmt.Errorf("ipv6 firewall %s: %w", chain.name, err)
 			}
 		}
 	}

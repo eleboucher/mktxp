@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 
@@ -30,6 +31,7 @@ func (c *PoolCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 			"ip_pool_used", "Number of used addresses per IP pool (IPv4)",
 		); err != nil {
 			slog.Error("ip pool collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv4 pool: %w", err)
 		}
 	}
 
@@ -39,6 +41,7 @@ func (c *PoolCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 			"ip_pool_used_ipv6", "Number of used addresses per IP pool (IPv6)",
 		); err != nil {
 			slog.Error("ipv6 pool collect failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("ipv6 pool: %w", err)
 		}
 	}
 

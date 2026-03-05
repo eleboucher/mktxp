@@ -23,6 +23,7 @@ func (c *ConnectionCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 		records, err := e.APIConn.Run(ctx, "/ip/firewall/connection/print", "=count-only=")
 		if err != nil {
 			slog.Error("connection count failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("connection count: %w", err)
 		} else if len(records) > 0 {
 			mb.GaugeVal(ch, "ip_connections_total", "Number of IP connections",
 				ParseFloat(records[0]["ret"]), nil, nil)
@@ -32,6 +33,7 @@ func (c *ConnectionCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 	if e.ConfigEntry.ConnectionStats {
 		if err := c.collectStats(ctx, e, mb, ch); err != nil {
 			slog.Error("connection stats failed", "router", e.RouterName, "err", err)
+			return fmt.Errorf("connection stats: %w", err)
 		}
 	}
 

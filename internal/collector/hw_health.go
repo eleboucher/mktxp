@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -24,7 +25,7 @@ func (c *HWHealthCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	records, err := e.APIConn.Run(ctx, "/system/health/print")
 	if err != nil {
 		slog.Error("hw_health collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("hw_health: %w", err)
 	}
 
 	flat := normalizeHealthRecords(records)

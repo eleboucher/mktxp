@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -24,10 +25,12 @@ func (c *QueueCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch c
 
 	if err := c.collectTree(ctx, e, mb, ch); err != nil {
 		slog.Error("queue tree collect failed", "router", e.RouterName, "err", err)
+		return fmt.Errorf("queue tree: %w", err)
 	}
 
 	if err := c.collectSimple(ctx, e, mb, ch); err != nil {
 		slog.Error("queue simple collect failed", "router", e.RouterName, "err", err)
+		return fmt.Errorf("queue simple: %w", err)
 	}
 
 	return nil

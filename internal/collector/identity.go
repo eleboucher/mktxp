@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/eleboucher/mktxp/internal/entry"
@@ -27,7 +28,7 @@ func (c *IdentityCollector) Collect(ctx context.Context, e *entry.RouterEntry, c
 	)
 	if err != nil {
 		slog.Error("identity collect failed", "router", e.RouterName, "err", err)
-		return nil
+		return fmt.Errorf("identity: %w", err)
 	}
 	if len(records) == 0 {
 		return nil
