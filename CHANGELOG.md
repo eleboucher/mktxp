@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.0.4](https://github.com/eleboucher/mktxp/compare/0.0.3...0.0.4) (2026-03-06)
+
+
+### Features
+
+* apply overengineer optimization for memory and cpu ([19b87f5](https://github.com/eleboucher/mktxp/commit/19b87f549771284c8784038527ca74367b40273f))
+* properly handle bandwidth ([4df1a68](https://github.com/eleboucher/mktxp/commit/4df1a6844b7a94de8ed3867e971b17e08c0c019c))
+* remove duplicated metrics ([0ce2ed3](https://github.com/eleboucher/mktxp/commit/0ce2ed39380998a353e8313f00d7c02ee8ac4d97))
+* use counter where it's accumulating data ([b70afb8](https://github.com/eleboucher/mktxp/commit/b70afb89ec063bfbf00d4af0a07bd4a164f77669))
+* use header for scrape timeout ([b7b603d](https://github.com/eleboucher/mktxp/commit/b7b603daafddb8c001c0eec8041c96c51fccf313))
+* use semaphore to handle concurrency ([98466ad](https://github.com/eleboucher/mktxp/commit/98466adfcd0c70272177f94a95402b2b15cbe370))
+
+
+### Miscellaneous Chores
+
+* delete unecessary config ([6899ba2](https://github.com/eleboucher/mktxp/commit/6899ba297ead4d6505114d1ec3347a4287a3d1f9))
+* handle prometheus error better ([a3cef6a](https://github.com/eleboucher/mktxp/commit/a3cef6a2ed3c0b38cb16c9c3fa5d9ab363aa3bd1))
+* improve bandwidth concurrency ([906ac3b](https://github.com/eleboucher/mktxp/commit/906ac3bb3254e3f57f40c55b9fabf4f2454acd6e))
+
 ## [0.0.3](https://github.com/eleboucher/mktxp/compare/0.0.2...0.0.3) (2026-03-05)
 
 
