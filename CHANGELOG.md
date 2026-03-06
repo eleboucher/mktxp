@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.5](https://github.com/eleboucher/mktxp/compare/0.0.4...0.0.5) (2026-03-06)
+
+
+### Bug Fixes
+
+* correctly handle client mutex to avoid deadlock ([e30881f](https://github.com/eleboucher/mktxp/commit/e30881ffaf5101e8afc3cc5df604a8f11b2cafe3))
+
+
+### Miscellaneous Chores
+
+* clean up ([170356a](https://github.com/eleboucher/mktxp/commit/170356ac5925a3b9273a777a3ca8878830faecc6))
+* **deps:** update docker/build-push-action action to v7 ([#12](https://github.com/eleboucher/mktxp/issues/12)) ([79fa627](https://github.com/eleboucher/mktxp/commit/79fa6277688dccacbe8b7fa2af943f565b94908c))
+* **deps:** update docker/metadata-action action to v6 ([#7](https://github.com/eleboucher/mktxp/issues/7)) ([f9ffcc9](https://github.com/eleboucher/mktxp/commit/f9ffcc9c0f7b926689b6f3b928190689b48ea631))
+
 ## [0.0.4](https://github.com/eleboucher/mktxp/compare/0.0.3...0.0.4) (2026-03-06)
 
 
