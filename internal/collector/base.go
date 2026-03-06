@@ -5,7 +5,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/eleboucher/mktxp/internal/entry"
 	"github.com/eleboucher/mktxp/internal/utils"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,15 +16,23 @@ import (
 const namespace = "mktxp"
 
 const (
-	trueStr  = "true"
-	falseStr = "false"
+	trueStr = "true"
 )
+
+var keyCache sync.Map
 
 // NormalizeKey replaces RouterOS key separators (. and -) with underscores.
 func NormalizeKey(key string) string {
-	key = strings.ReplaceAll(key, ".", "_")
-	key = strings.ReplaceAll(key, "-", "_")
-	return key
+	if cached, ok := keyCache.Load(key); ok {
+		return cached.(string)
+	}
+
+	// If not, do the expensive allocation once
+	normalized := strings.ReplaceAll(key, ".", "_")
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+
+	keyCache.Store(key, normalized)
+	return normalized
 }
 
 func ParseFloat(s string) float64 {
@@ -78,7 +88,7 @@ type MetricBuilder struct {
 	customKeys   []string // sorted for deterministic label ordering
 	customLabels map[string]string
 
-	emitted map[string]map[string]struct{}
+	emitted map[string]map[uint64]struct{}
 }
 
 func NewMetricBuilder(e *entry.RouterEntry) *MetricBuilder {
@@ -92,7 +102,7 @@ func NewMetricBuilder(e *entry.RouterEntry) *MetricBuilder {
 		routerID:     e.RouterID,
 		customKeys:   keys,
 		customLabels: cl,
-		emitted:      make(map[string]map[string]struct{}),
+		emitted:      make(map[string]map[uint64]struct{}),
 	}
 }
 
@@ -227,16 +237,21 @@ func (b *MetricBuilder) Info(ch chan<- prometheus.Metric, name, help string, lab
 }
 
 func (b *MetricBuilder) isDuplicate(name string, labelVals []string) bool {
-	key := strings.Join(labelVals, "\x00")
+	digest := xxhash.New()
+	for _, val := range labelVals {
+		_, _ = digest.WriteString(val)
+		_, _ = digest.WriteString("\x00")
+	}
+	hashKey := digest.Sum64()
 
 	if _, ok := b.emitted[name]; !ok {
-		b.emitted[name] = make(map[string]struct{})
+		b.emitted[name] = make(map[uint64]struct{})
 	}
 
-	if _, exists := b.emitted[name][key]; exists {
+	if _, exists := b.emitted[name][hashKey]; exists {
 		return true
 	}
 
-	b.emitted[name][key] = struct{}{}
+	b.emitted[name][hashKey] = struct{}{}
 	return false
 }

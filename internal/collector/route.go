@@ -60,24 +60,24 @@ func collectRouteMetrics(
 	totalMetric, totalHelp string,
 	protocolMetric, protocolHelp string,
 ) error {
-	records, err := e.APIConn.Run(ctx, api, "=.proplist=dynamic,connect,static,bgp,ospf")
-	if err != nil {
-		return err
-	}
-
 	protocolCounts := make(map[string]float64, len(routeProtocols))
 	for _, p := range routeProtocols {
 		protocolCounts[p] = 0
 	}
 
-	total := float64(len(records))
-	for _, raw := range records {
-		record := TrimRecord(raw, routeProtocols)
+	var total float64
+
+	err := e.APIConn.RunStream(ctx, func(raw map[string]string) {
+		total++
+
 		for _, proto := range routeProtocols {
-			if record[proto] == trueStr {
+			if raw[proto] == trueStr {
 				protocolCounts[proto]++
 			}
 		}
+	}, api, "=.proplist=dynamic,connect,static,bgp,ospf")
+	if err != nil {
+		return err
 	}
 
 	mb.GaugeVal(ch, totalMetric, totalHelp, total, nil, nil)

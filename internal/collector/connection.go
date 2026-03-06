@@ -41,27 +41,33 @@ func (c *ConnectionCollector) Collect(ctx context.Context, e *entry.RouterEntry,
 }
 
 func (c *ConnectionCollector) collectStats(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric) error {
-	records, err := e.APIConn.Run(ctx, "/ip/firewall/connection/print",
-		"=.proplist=src-address,dst-address,protocol")
-	if err != nil {
-		return err
-	}
-
 	type stats struct {
 		count int
 		dsts  map[string]struct{}
 	}
 
 	byAddr := make(map[string]*stats)
-	for _, rec := range records {
-		src := strings.SplitN(rec["src-address"], ":", 2)[0]
-		dst := fmt.Sprintf("%s(%s)", rec["dst-address"], rec["protocol"])
+
+	err := e.APIConn.RunStream(ctx, func(raw map[string]string) {
+		srcFull := raw["src-address"]
+		dstFull := raw["dst-address"]
+		protocol := raw["protocol"]
+
+		if srcFull == "" || dstFull == "" {
+			return
+		}
+
+		src := strings.SplitN(srcFull, ":", 2)[0]
+		dst := fmt.Sprintf("%s(%s)", dstFull, protocol)
 
 		if _, ok := byAddr[src]; !ok {
 			byAddr[src] = &stats{dsts: make(map[string]struct{})}
 		}
 		byAddr[src].count++
 		byAddr[src].dsts[dst] = struct{}{}
+	}, "/ip/firewall/connection/print", "=.proplist=src-address,dst-address,protocol")
+	if err != nil {
+		return err
 	}
 
 	labelKeys := []string{"src_address", "dst_addresses"}

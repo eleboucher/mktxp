@@ -185,6 +185,65 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 	return routeros.DialTLSContext(ctx, addr, username, password, tlsCfg)
 }
 
+func (c *Connection) RunStream(ctx context.Context, callback func(map[string]string), sentence ...string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.client == nil {
+		return fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
+	}
+
+	cl := c.client
+	// Increase buffer slightly to ensure smooth streaming
+	cl.Queue = 1000
+
+	// ListenArgs handles the stream safely without destroying the underlying socket on context cancel
+	l, err := cl.ListenArgs(sentence)
+	if err != nil {
+		if c.client == cl {
+			_ = cl.Close()
+			c.client = nil
+			c.recordFailure(time.Now())
+		}
+		return err
+	}
+
+	ctxChan := ctx.Done()
+	var cancelOnce sync.Once
+
+	for {
+		select {
+		case <-ctxChan:
+			// Context timed out. Disable this select case and tell the router to abort.
+			ctxChan = nil
+			cancelOnce.Do(func() {
+				go func() {
+					_, _ = l.Cancel()
+				}()
+			})
+
+		case sen, ok := <-l.Chan():
+			if !ok {
+				// Stream finished or connection dropped
+				if err := l.Err(); err != nil {
+					if c.client == cl {
+						_ = cl.Close()
+						c.client = nil
+						c.recordFailure(time.Now())
+					}
+					return err
+				}
+				return ctx.Err()
+			}
+
+			// Process the record if we haven't timed out
+			if ctxChan != nil && sen != nil && len(sen.Map) > 0 {
+				callback(sen.Map)
+			}
+		}
+	}
+}
+
 func (c *Connection) resolveCredentials() (string, string, error) {
 	if c.cfg.CredentialsFile == "" {
 		return c.cfg.Username, c.cfg.Password, nil
