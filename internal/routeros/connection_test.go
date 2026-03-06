@@ -2,11 +2,35 @@ package routeros
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	routeros "github.com/go-routeros/routeros/v3"
 )
+
+// fakeClient implements apiClient for unit tests.
+type fakeClient struct {
+	runErr    error
+	listenErr error
+	closed    bool
+}
+
+func (f *fakeClient) RunArgsContext(_ context.Context, _ []string) (*routeros.Reply, error) {
+	return nil, f.runErr
+}
+
+func (f *fakeClient) ListenArgsQueue(_ []string, _ int) (*routeros.ListenReply, error) {
+	return nil, f.listenErr
+}
+
+func (f *fakeClient) Close() error {
+	f.closed = true
+	return nil
+}
 
 func TestConnectDelay(t *testing.T) {
 	t.Parallel()
@@ -237,4 +261,93 @@ func TestRouterName(t *testing.T) {
 	if c.RouterName() != "my-router" {
 		t.Errorf("RouterName() = %q, want my-router", c.RouterName())
 	}
+}
+
+func TestRun_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	_, err := c.Run(context.Background(), "/foo")
+	if err == nil {
+		t.Error("expected error when client is nil")
+	}
+}
+
+func TestRun_ErrorResetsClient(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeClient{runErr: errors.New("connection reset")}
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.client = fake
+
+	_, err := c.Run(context.Background(), "/foo")
+	if err == nil {
+		t.Fatal("expected error from Run")
+	}
+	if c.client != nil {
+		t.Error("client should be nil after error")
+	}
+	if !fake.closed {
+		t.Error("Close should have been called")
+	}
+	if c.failureCount != 1 {
+		t.Errorf("failureCount = %d, want 1", c.failureCount)
+	}
+}
+
+func TestRunStream_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	err := c.RunStream(context.Background(), func(map[string]string) {}, "/foo")
+	if err == nil {
+		t.Error("expected error when client is nil")
+	}
+}
+
+func TestRunStream_ListenErrorResetsClient(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeClient{listenErr: errors.New("listen failed")}
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.client = fake
+
+	err := c.RunStream(context.Background(), func(map[string]string) {}, "/foo")
+	if err == nil {
+		t.Fatal("expected error from RunStream")
+	}
+	if c.client != nil {
+		t.Error("client should be nil after listen error")
+	}
+	if !fake.closed {
+		t.Error("Close should have been called")
+	}
+	if c.failureCount != 1 {
+		t.Errorf("failureCount = %d, want 1", c.failureCount)
+	}
+}
+
+func TestDisconnect_WhenNotConnected(t *testing.T) {
+	t.Parallel()
+
+	c := NewConnection(ConnectionConfig{})
+	c.Disconnect() // must not panic
+}
+
+// TestRun_ConcurrentDisconnect exercises the locking paths under the race
+// detector. With a nil client both operations return immediately; the goal is
+// to catch any data race on c.mu or c.client.
+func TestRun_ConcurrentDisconnect(t *testing.T) {
+	t.Parallel()
+
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Add(2)
+		go func() { defer wg.Done(); c.Disconnect() }()
+		go func() { defer wg.Done(); _, _ = c.Run(ctx, "/foo") }()
+	}
+	wg.Wait()
 }

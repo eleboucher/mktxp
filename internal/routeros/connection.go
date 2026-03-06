@@ -47,11 +47,18 @@ type credentialsFile struct {
 	Password string `yaml:"password"`
 }
 
+// apiClient is the subset of *routeros.Client used by Connection.
+type apiClient interface {
+	RunArgsContext(ctx context.Context, sentence []string) (*routeros.Reply, error)
+	ListenArgsQueue(sentence []string, queueSize int) (*routeros.ListenReply, error)
+	Close() error
+}
+
 type Connection struct {
 	cfg ConnectionConfig
 
 	mu           sync.Mutex
-	client       *routeros.Client
+	client       apiClient
 	lastFailure  time.Time
 	failureCount int
 }
@@ -115,15 +122,14 @@ func (c *Connection) Disconnect() {
 func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]string, error) {
 	c.mu.Lock()
 	cl := c.client
-	defer c.mu.Unlock()
 
 	if cl == nil {
+		c.mu.Unlock()
 		return nil, fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
 	}
 
 	reply, err := cl.RunArgsContext(ctx, sentence)
 	if err != nil {
-		c.mu.Lock()
 		if c.client == cl {
 			_ = c.client.Close()
 			c.client = nil
@@ -132,6 +138,7 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 		c.mu.Unlock()
 		return nil, err
 	}
+	c.mu.Unlock()
 
 	result := make([]map[string]string, 0, len(reply.Re))
 	for _, s := range reply.Re {
@@ -162,7 +169,7 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 	tlsCfg := &tls.Config{ServerName: c.cfg.Hostname}
 
 	if c.cfg.NoSSLCertificate || !c.cfg.SSLCertificateVerify || !c.cfg.SSLCheckHostname {
-		insecureReasons := []string{}
+		var insecureReasons []string
 		if c.cfg.NoSSLCertificate {
 			insecureReasons = append(insecureReasons, "NoSSLCertificate")
 		}
@@ -187,26 +194,24 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 
 func (c *Connection) RunStream(ctx context.Context, callback func(map[string]string), sentence ...string) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	cl := c.client
 
-	if c.client == nil {
+	if cl == nil {
+		c.mu.Unlock()
 		return fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
 	}
 
-	cl := c.client
-	// Increase buffer slightly to ensure smooth streaming
-	cl.Queue = 1000
-
-	// ListenArgs handles the stream safely without destroying the underlying socket on context cancel
-	l, err := cl.ListenArgs(sentence)
+	l, err := cl.ListenArgsQueue(sentence, 1000)
 	if err != nil {
 		if c.client == cl {
 			_ = cl.Close()
 			c.client = nil
 			c.recordFailure(time.Now())
 		}
+		c.mu.Unlock()
 		return err
 	}
+	c.mu.Unlock()
 
 	ctxChan := ctx.Done()
 	var cancelOnce sync.Once
@@ -224,19 +229,21 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 
 		case sen, ok := <-l.Chan():
 			if !ok {
-				// Stream finished or connection dropped
+				// Stream finished or connection dropped.
 				if err := l.Err(); err != nil {
+					c.mu.Lock()
 					if c.client == cl {
 						_ = cl.Close()
 						c.client = nil
 						c.recordFailure(time.Now())
 					}
+					c.mu.Unlock()
 					return err
 				}
 				return ctx.Err()
 			}
 
-			// Process the record if we haven't timed out
+			// Process the record if we haven't timed out.
 			if ctxChan != nil && sen != nil && len(sen.Map) > 0 {
 				callback(sen.Map)
 			}
