@@ -48,7 +48,8 @@ func New(cfg *config.SystemConfig, opts *Options) *Server {
 		semaphore:    make(chan struct{}, semSize),
 		totalTimeout: time.Duration(cfg.TotalMaxScrapeDuration) * time.Second,
 		httpServer: &http.Server{
-			Addr: listen,
+			Addr:              listen,
+			ReadHeaderTimeout: 10 * time.Second,
 		},
 	}
 }
@@ -122,7 +123,9 @@ func (s *Server) getScrapeTimeout(r *http.Request) time.Duration {
 	timeout := s.totalTimeout
 	if promTimeout := r.Header.Get("X-Prometheus-Scrape-Timeout-Seconds"); promTimeout != "" {
 		if parsed, err := strconv.ParseFloat(promTimeout, 64); err == nil {
-			timeout = time.Duration(parsed*float64(time.Second)) - (500 * time.Millisecond)
+			if t := time.Duration(parsed*float64(time.Second)) - (500 * time.Millisecond); t > 0 {
+				timeout = t
+			}
 		}
 	}
 	return timeout
@@ -249,6 +252,13 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 	}).ServeHTTP(w, r)
 }
 
+var collectionTimeDesc = prometheus.NewDesc(
+	"mktxp_collection_time_total",
+	"Total time spent collecting metrics in milliseconds",
+	[]string{"collector", "routerboard_name"},
+	nil,
+)
+
 type routerCollector struct {
 	collector      collector.Collector
 	entry          *entry.RouterEntry
@@ -274,13 +284,7 @@ func (rc *routerCollector) Collect(ch chan<- prometheus.Metric) {
 		slog.Error("Collector failed", "collector", rc.collector.Name(), "router", routerName, "error", err)
 	}
 	duration := time.Since(start).Milliseconds()
-	metricDesc := prometheus.NewDesc(
-		"mktxp_collection_time_total",
-		"Total time spent collecting metrics in milliseconds",
-		[]string{"collector", "routerboard_name"},
-		nil,
-	)
-	ch <- prometheus.MustNewConstMetric(metricDesc, prometheus.GaugeValue, float64(duration), rc.collector.Name(), rc.getRouterboardName())
+	ch <- prometheus.MustNewConstMetric(collectionTimeDesc, prometheus.GaugeValue, float64(duration), rc.collector.Name(), rc.getRouterboardName())
 }
 
 func (rc *routerCollector) getRouterboardName() string {
