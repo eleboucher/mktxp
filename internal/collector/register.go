@@ -10,6 +10,7 @@ func AllCollectors() []Collector {
 		NewMonitorCollector(),
 		NewPOECollector(),
 		NewDHCPCollector(),
+		NewDHCPv6Collector(),
 		NewPoolCollector(),
 		NewRouteCollector(),
 		NewFirewallCollector(),

@@ -22,6 +22,8 @@ default:
   installed_packages: true
   dhcp: true
   dhcp_lease: true
+  dhcpv6: true
+  dhcpv6_lease: true
   connections: true
   connection_stats: false
   interface: true

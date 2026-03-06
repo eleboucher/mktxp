@@ -26,6 +26,8 @@ type RouterConfigEntry struct {
 	InstalledPackages   bool     `yaml:"installed_packages"`
 	DHCP                bool     `yaml:"dhcp"`
 	DHCPLease           bool     `yaml:"dhcp_lease"`
+	DHCPv6              bool     `yaml:"dhcpv6"`
+	DHCPv6Lease         bool     `yaml:"dhcpv6_lease"`
 	Connections         bool     `yaml:"connections"`
 	ConnectionStats     bool     `yaml:"connection_stats"`
 	Interface           bool     `yaml:"interface"`
@@ -114,6 +116,8 @@ type rawEntry struct {
 	InstalledPackages    *bool             `yaml:"installed_packages"`
 	DHCP                 *bool             `yaml:"dhcp"`
 	DHCPLease            *bool             `yaml:"dhcp_lease"`
+	DHCPv6               *bool             `yaml:"dhcpv6"`
+	DHCPv6Lease          *bool             `yaml:"dhcpv6_lease"`
 	Connections          *bool             `yaml:"connections"`
 	ConnectionStats      *bool             `yaml:"connection_stats"`
 	Interface            *bool             `yaml:"interface"`
@@ -206,6 +210,8 @@ func hardcodedDefaults() RouterConfigEntry {
 		InstalledPackages:    true,
 		DHCP:                 true,
 		DHCPLease:            true,
+		DHCPv6:               false,
+		DHCPv6Lease:          false,
 		Connections:          true,
 		ConnectionStats:      false,
 		Interface:            true,
