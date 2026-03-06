@@ -281,12 +281,10 @@ func (c *Connection) inBackoff(ctx context.Context, now time.Time) bool {
 	delay := c.connectDelay()
 	remaining := delay - now.Sub(c.lastFailure)
 	if remaining > 0 {
-		if slog.Default().Enabled(ctx, slog.LevelDebug) {
-			slog.Debug("In connect timeout",
-				"name", c.cfg.RouterName,
-				"remaining_secs", int(remaining.Seconds()),
-				"failures", c.failureCount)
-		}
+		slog.DebugContext(ctx, "In connect timeout",
+			"name", c.cfg.RouterName,
+			"remaining_secs", int(remaining.Seconds()),
+			"failures", c.failureCount)
 		return true
 	}
 	return false

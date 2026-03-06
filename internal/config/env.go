@@ -191,7 +191,9 @@ func (e *EnvConfigurator) applySystemFieldOverride(h *ConfigHandler, field, valu
 	if fi, ok := systemFieldMap[fieldLower]; ok {
 		switch {
 		case fi.IsString:
-			h.sysConfig.Listen = value
+			if fieldLower == "listen" {
+				h.sysConfig.Listen = value
+			}
 			slog.Info("Applied system env override",
 				"field", field,
 				"value", value)

@@ -81,9 +81,9 @@ func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorN
 			}
 
 			c.mu.Lock()
+			defer c.mu.Unlock()
 			c.internetResults = result
 			c.lastTestTime = time.Now()
-			defer c.mu.Unlock()
 			slog.Info("Bandwidth test completed successfully", "collector", collectorName,
 				"download_mbps", result.DLSpeed.Mbps(),
 				"upload_mbps", result.ULSpeed.Mbps(),
