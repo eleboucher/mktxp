@@ -2,237 +2,149 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
 )
 
-const envPrefix = "MKTXP_"
+const envPrefix = "MKTXP"
 
-// EnvConfigurator handles environment variable configuration overrides using Viper.
-type EnvConfigurator struct {
-	v *viper.Viper
-}
+type EnvConfigurator struct{}
 
-// NewEnvConfigurator creates a new EnvConfigurator instance.
 func NewEnvConfigurator() *EnvConfigurator {
-	return &EnvConfigurator{
-		v: viper.New(),
-	}
+	return &EnvConfigurator{}
 }
 
-// ApplyRouterOverrides applies environment variable overrides to router entries.
-// Pattern: MKTXP_{ROUTERNAME}_{FIELD}
-// Priority: Environment > Credentials File > YAML Config > Defaults
+// ApplyRouterOverrides applies MKTXP_{ROUTERNAME}_{FIELD} env vars to each router entry.
+// Router name matching is case-insensitive.
 func (e *EnvConfigurator) ApplyRouterOverrides(h *ConfigHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	routerNames := make([]string, 0, len(h.entryCache))
-	for name := range h.entryCache {
-		routerNames = append(routerNames, name)
+	// Build a case-normalised lookup (UPPERCASE_KEY → value) so that router
+	// names in env var keys are matched case-insensitively on Linux.
+	envMap := buildEnvMap()
+
+	for routerName, entry := range h.entryCache {
+		prefix := envPrefix + "_" + strings.ToUpper(routerName) + "_"
+		rv := viperFromEnvMap(prefix, envMap)
+		applyRouterOverridesFromViper(rv, routerName, entry)
 	}
-
-	e.v = viper.New()
-	e.v.SetEnvPrefix(envPrefix)
-	e.v.AutomaticEnv()
-	e.v.SetEnvKeyReplacer(strings.NewReplacer("_", "_"))
-
-	envVars := os.Environ()
-	for _, envVar := range envVars {
-		key, value, found := strings.Cut(envVar, "=")
-		if !found || !strings.HasPrefix(key, envPrefix) {
-			continue
-		}
-
-		// Parse MKTXP_ROUTERNAME_FIELD or MKTXP_FIELD
-		rest := key[len(envPrefix):]
-		parts := strings.SplitN(rest, "_", 2)
-
-		if len(parts) == 2 {
-			routerName, field := parts[0], parts[1]
-			matchedRouter := e.findRouterByName(routerName, routerNames)
-			if matchedRouter == "" && routerName != "*" {
-				slog.Debug("Environment variable doesn't match any router",
-					"var", key, "router", routerName)
-				continue
-			}
-			e.applyFieldOverride(h, matchedRouter, field, value)
-		} else if len(parts) == 1 {
-			// System-level env var: MKTXP_FIELD
-			e.applySystemFieldOverride(h, parts[0], value)
-		}
-	}
-
 	return nil
 }
 
-// ApplySystemOverrides applies environment variable overrides to system config.
-// Pattern: MKTXP_{FIELD} (no router name)
+// ApplySystemOverrides applies MKTXP_{FIELD} env vars to system config.
 func (e *EnvConfigurator) ApplySystemOverrides(h *ConfigHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	e.v = viper.New()
-	e.v.SetEnvPrefix(envPrefix)
-	e.v.AutomaticEnv()
-	e.v.SetEnvKeyReplacer(strings.NewReplacer("_", "_"))
-
-	envVars := os.Environ()
-	for _, envVar := range envVars {
-		key, value, found := strings.Cut(envVar, "=")
-		if !found || !strings.HasPrefix(key, envPrefix) {
-			continue
-		}
-
-		field := key[len(envPrefix):]
-		e.applySystemFieldOverride(h, field, value)
+	v := viper.New()
+	v.SetEnvPrefix(envPrefix)
+	v.AutomaticEnv()
+	for fieldName := range systemFieldMap {
+		_ = v.BindEnv(fieldName)
 	}
 
+	for fieldName, fi := range systemFieldMap {
+		if !v.IsSet(fieldName) {
+			continue
+		}
+		switch {
+		case fi.IsString:
+			setSystemStringField(h.sysConfig, fieldName, v.GetString(fieldName))
+		case fi.IsInt:
+			setSystemIntField(h.sysConfig, fieldName, v.GetInt(fieldName))
+		case fi.IsBool:
+			setSystemBoolField(h.sysConfig, fieldName, v.GetBool(fieldName))
+		}
+		slog.Info("Applied system env override", "field", fieldName)
+	}
 	return nil
 }
 
-// findRouterByName performs case-insensitive exact matching of router names.
-func (e *EnvConfigurator) findRouterByName(input string, known []string) string {
-	inputUpper := strings.ToUpper(input)
-	for _, name := range known {
-		if strings.ToUpper(name) == inputUpper {
-			return name
+// buildEnvMap scans os.Environ() and returns an uppercase-keyed map of all
+// env vars that start with the MKTXP_ prefix.
+func buildEnvMap() map[string]string {
+	pfx := envPrefix + "_"
+	m := make(map[string]string)
+	for _, env := range os.Environ() {
+		key, value, found := strings.Cut(env, "=")
+		if found && strings.HasPrefix(strings.ToUpper(key), pfx) {
+			m[strings.ToUpper(key)] = value
 		}
 	}
-	return ""
+	return m
 }
 
-// applyFieldOverride applies a single field override to a router entry.
-func (e *EnvConfigurator) applyFieldOverride(h *ConfigHandler, routerName, field, value string) {
-	entry, exists := h.entryCache[routerName]
-	if !exists {
-		return
+// viperFromEnvMap creates a Viper instance pre-populated with all entries in
+// envMap whose key starts with prefix. Keys are stripped of the prefix and
+// lowercased so callers use plain field names (e.g. "hostname").
+func viperFromEnvMap(prefix string, envMap map[string]string) *viper.Viper {
+	v := viper.New()
+	for key, val := range envMap {
+		if strings.HasPrefix(key, prefix) {
+			fieldName := strings.ToLower(key[len(prefix):])
+			v.Set(fieldName, val)
+		}
+	}
+	return v
+}
+
+func applyRouterOverridesFromViper(v *viper.Viper, routerName string, entry *RouterConfigEntry) {
+	for fieldName, getPtr := range routerFieldPointers {
+		if !v.IsSet(fieldName) {
+			continue
+		}
+		*getPtr(entry) = v.GetBool(fieldName)
+		slog.Info("Applied env override", "router", routerName, "field", fieldName)
 	}
 
-	fieldLower := strings.ToLower(field)
+	for fieldName, getPtr := range routerStringFieldPointers {
+		if !v.IsSet(fieldName) {
+			continue
+		}
+		*getPtr(entry) = v.GetString(fieldName)
+		slog.Info("Applied env override", "router", routerName, "field", fieldName, "value", "***")
+	}
 
-	// Handle special fields
-	switch fieldLower {
-	case "username", "password", "hostname", "credentials_file",
-		"remote_dhcp_entry", "remote_capsman_entry", "interface_name_format":
-		*getPtrString(entry, fieldLower) = value
-		slog.Info("Applied env override",
-			"router", routerName,
-			"field", field,
-			"value", "***")
-		return
+	if v.IsSet("port") {
+		port := v.GetInt("port")
+		if port >= 1 && port <= 65535 {
+			entry.Port = port
+			slog.Info("Applied env override", "router", routerName, "field", "port", "value", port)
+		} else {
+			slog.Warn("Port out of range in environment variable", "router", routerName, "port", port)
+		}
+	}
 
-	case "custom_labels":
+	if v.IsSet("custom_labels") {
 		var labels map[string]string
-		if err := json.Unmarshal([]byte(value), &labels); err != nil {
-			slog.Warn("Failed to parse custom_labels from env",
-				"router", routerName,
-				"field", field,
-				"error", err)
+		if err := json.Unmarshal([]byte(v.GetString("custom_labels")), &labels); err != nil {
+			slog.Warn("Failed to parse custom_labels from env", "router", routerName, "error", err)
 		} else {
 			if entry.CustomLabels == nil {
 				entry.CustomLabels = make(map[string]string)
 			}
-			for k, v := range labels {
-				entry.CustomLabels[k] = v
+			for k, val := range labels {
+				entry.CustomLabels[k] = val
 			}
+			slog.Info("Applied env override", "router", routerName, "field", "custom_labels")
 		}
-		return
-
-	case "port":
-		if port, err := parsePort(value); err == nil {
-			*getPtrInt(entry, fieldLower) = port
-			slog.Info("Applied env override",
-				"router", routerName,
-				"field", field,
-				"value", value)
-		} else {
-			slog.Warn("Invalid port value in environment variable",
-				"router", routerName,
-				"field", field,
-				"value", value,
-				"error", err)
-		}
-		return
 	}
-
-	// Handle boolean fields using field map
-	if fi, ok := routerFieldMap[fieldLower]; ok && fi.IsBool {
-		if b, err := parseBool(value); err == nil {
-			*getPtrBool(entry, fieldLower) = b
-			slog.Info("Applied env override",
-				"router", routerName,
-				"field", field,
-				"value", value)
-		} else {
-			slog.Warn("Invalid boolean value in environment variable",
-				"router", routerName,
-				"field", field,
-				"value", value,
-				"error", err)
-		}
-		return
-	}
-
-	slog.Debug("Unknown environment variable field",
-		"router", routerName,
-		"field", field)
 }
 
-// applySystemFieldOverride applies a single field override to system config.
-func (e *EnvConfigurator) applySystemFieldOverride(h *ConfigHandler, field, value string) {
-	fieldLower := strings.ToLower(field)
-
-	if fi, ok := systemFieldMap[fieldLower]; ok {
-		switch {
-		case fi.IsString:
-			if fieldLower == "listen" {
-				h.sysConfig.Listen = value
-			}
-			slog.Info("Applied system env override",
-				"field", field,
-				"value", value)
-
-		case fi.IsInt:
-			if num, err := parseInt(value); err == nil {
-				e.setSystemIntField(h.sysConfig, fieldLower, num)
-				slog.Info("Applied system env override",
-					"field", field,
-					"value", value)
-			} else {
-				slog.Warn("Invalid numeric value in environment variable",
-					"field", field,
-					"value", value,
-					"error", err)
-			}
-
-		case fi.IsBool:
-			if b, err := parseBool(value); err == nil {
-				e.setSystemBoolField(h.sysConfig, fieldLower, b)
-				slog.Info("Applied system env override",
-					"field", field,
-					"value", value)
-			} else {
-				slog.Warn("Invalid boolean value in environment variable",
-					"field", field,
-					"value", value,
-					"error", err)
-			}
-		}
-		return
+func setSystemStringField(sc *SystemConfig, field, value string) {
+	switch field {
+	case "listen":
+		sc.Listen = value
+	case "bandwidth_test_dns_server":
+		sc.BandwidthTestDNSServer = value
 	}
-
-	slog.Debug("Unknown system environment variable field",
-		"field", field)
 }
 
-// setSystemIntField sets an integer field on the system config.
-func (e *EnvConfigurator) setSystemIntField(sc *SystemConfig, field string, value int) {
+func setSystemIntField(sc *SystemConfig, field string, value int) {
 	switch field {
 	case "socket_timeout":
 		sc.SocketTimeout = value
@@ -259,9 +171,10 @@ func (e *EnvConfigurator) setSystemIntField(sc *SystemConfig, field string, valu
 	}
 }
 
-// setSystemBoolField sets a boolean field on the system config.
-func (e *EnvConfigurator) setSystemBoolField(sc *SystemConfig, field string, value bool) {
+func setSystemBoolField(sc *SystemConfig, field string, value bool) {
 	switch field {
+	case "bandwidth":
+		sc.Bandwidth = value
 	case "verbose_mode":
 		sc.VerboseMode = value
 	case "fetch_routers_in_parallel":
@@ -275,10 +188,8 @@ func (e *EnvConfigurator) setSystemBoolField(sc *SystemConfig, field string, val
 	}
 }
 
-// fieldPointer is a helper type for field pointer functions.
 type fieldPointer[T any] func(*RouterConfigEntry) *T
 
-// routerFieldPointers maps field names to their pointer functions.
 var routerFieldPointers = map[string]fieldPointer[bool]{
 	"enabled":                func(e *RouterConfigEntry) *bool { return &e.Enabled },
 	"module_only":            func(e *RouterConfigEntry) *bool { return &e.ModuleOnly },
@@ -338,58 +249,4 @@ var routerStringFieldPointers = map[string]fieldPointer[string]{
 	"remote_dhcp_entry":     func(e *RouterConfigEntry) *string { return &e.RemoteDHCPEntry },
 	"remote_capsman_entry":  func(e *RouterConfigEntry) *string { return &e.RemoteCAPsMANEntry },
 	"interface_name_format": func(e *RouterConfigEntry) *string { return &e.InterfaceNameFormat },
-}
-
-var routerIntFieldPointers = map[string]fieldPointer[int]{
-	"port": func(e *RouterConfigEntry) *int { return &e.Port },
-}
-
-// getPtrBool returns a pointer to a boolean field by name.
-func getPtrBool(e *RouterConfigEntry, fieldName string) *bool {
-	if fn, ok := routerFieldPointers[fieldName]; ok {
-		return fn(e)
-	}
-	return nil
-}
-
-// getPtrString returns a pointer to a string field by name.
-func getPtrString(e *RouterConfigEntry, fieldName string) *string {
-	if fn, ok := routerStringFieldPointers[fieldName]; ok {
-		return fn(e)
-	}
-	return nil
-}
-
-// getPtrInt returns a pointer to an int field by name.
-func getPtrInt(e *RouterConfigEntry, fieldName string) *int {
-	if fn, ok := routerIntFieldPointers[fieldName]; ok {
-		return fn(e)
-	}
-	return nil
-}
-
-// parsePort parses a string to an integer port number.
-func parsePort(s string) (int, error) {
-	var p int
-	if _, err := fmt.Sscanf(s, "%d", &p); err != nil {
-		return 0, fmt.Errorf("invalid port: %w", err)
-	}
-	if p < 1 || p > 65535 {
-		return 0, fmt.Errorf("port out of range: %d", p)
-	}
-	return p, nil
-}
-
-// parseInt parses a string to an integer.
-func parseInt(s string) (int, error) {
-	var i int
-	if _, err := fmt.Sscanf(s, "%d", &i); err != nil {
-		return 0, fmt.Errorf("invalid integer: %w", err)
-	}
-	return i, nil
-}
-
-// parseBool parses a string to a boolean.
-func parseBool(s string) (bool, error) {
-	return strconv.ParseBool(s)
 }

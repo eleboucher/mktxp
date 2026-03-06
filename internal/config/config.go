@@ -11,22 +11,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ApplyEnvOverrides applies environment variable overrides to router entries.
 func (h *ConfigHandler) ApplyEnvOverrides() error {
-	configurator := NewEnvConfigurator()
-	return configurator.ApplyRouterOverrides(h)
+	return NewEnvConfigurator().ApplyRouterOverrides(h)
 }
 
-// ApplySystemEnvOverrides applies environment variable overrides to system config.
 func (h *ConfigHandler) ApplySystemEnvOverrides() error {
-	configurator := NewEnvConfigurator()
-	return configurator.ApplySystemOverrides(h)
+	return NewEnvConfigurator().ApplySystemOverrides(h)
 }
 
 //go:embed templates/mktxp.yaml templates/_mktxp.yaml
 var templateFS embed.FS
 
-// Handler is the package-level singleton ConfigHandler, initialized by Init().
 var Handler = &ConfigHandler{}
 
 // GetTemplateFS returns the embedded template filesystem for testing.
@@ -34,7 +29,6 @@ func GetTemplateFS() embed.FS {
 	return templateFS
 }
 
-// ConfigHandler manages loading and providing access to mktxp configuration.
 type ConfigHandler struct {
 	mu         sync.RWMutex
 	cfgDir     string
@@ -99,14 +93,13 @@ func (h *ConfigHandler) ensureFile(dst, embedPath string) error {
 	if err != nil {
 		return fmt.Errorf("config: read template %s: %w", embedPath, err)
 	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
 		return fmt.Errorf("config: write %s: %w", dst, err)
 	}
 	slog.Info("Created config file from template", "path", dst)
 	return nil
 }
 
-// loadMain parses mktxp.yaml.
 func (h *ConfigHandler) loadMain(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -120,7 +113,6 @@ func (h *ConfigHandler) loadMain(path string) error {
 	return nil
 }
 
-// loadSystem parses _mktxp.yaml into SystemConfig.
 type sysConfigFile struct {
 	MKTXP SystemConfig `yaml:"mktxp"`
 }
@@ -150,29 +142,25 @@ func (h *ConfigHandler) buildEntryCache() {
 	}
 }
 
-// SystemEntry returns the system configuration.
 func (h *ConfigHandler) SystemEntry() *SystemConfig {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.sysConfig
 }
 
-// RegisterTestSystemConfig sets the system config for testing purposes.
 func (h *ConfigHandler) RegisterTestSystemConfig(cfg *SystemConfig) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sysConfig = cfg
 }
 
-// RouterEntry returns the merged config entry for the named router.
-// Returns nil if not found.
+// RouterEntry returns the merged config entry for the named router, or nil if not found.
 func (h *ConfigHandler) RouterEntry(name string) *RouterConfigEntry {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.entryCache[name]
 }
 
-// RegisteredEntries returns the names of all configured routers.
 func (h *ConfigHandler) RegisteredEntries() []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -183,28 +171,24 @@ func (h *ConfigHandler) RegisteredEntries() []string {
 	return names
 }
 
-// MainConfPath returns the path to the main config file.
 func (h *ConfigHandler) MainConfPath() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return filepath.Join(h.cfgDir, "mktxp.yaml")
 }
 
-// SysConfPath returns the path to the system config file.
 func (h *ConfigHandler) SysConfPath() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return filepath.Join(h.cfgDir, "_mktxp.yaml")
 }
 
-// ConfigDir returns the configuration directory path.
 func (h *ConfigHandler) ConfigDir() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.cfgDir
 }
 
-// RegisterTestRouterEntry adds a router entry for testing purposes.
 func (h *ConfigHandler) RegisterTestRouterEntry(name string, cfg *RouterConfigEntry) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -225,7 +209,6 @@ func (h *ConfigHandler) RegisterTestRouterEntry(name string, cfg *RouterConfigEn
 	}
 }
 
-// Reload re-reads all config files from disk.
 func (h *ConfigHandler) Reload() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
