@@ -10,7 +10,7 @@ func setenv(t *testing.T, key, value string) {
 	if err := os.Setenv(key, value); err != nil {
 		t.Fatalf("setenv %s: %v", key, err)
 	}
-	t.Cleanup(func() { os.Unsetenv(key) })
+	t.Cleanup(func() { os.Unsetenv(key) }) // nolint:errcheck
 }
 
 func newTestHandler(routers map[string]*RouterConfigEntry) *ConfigHandler {
