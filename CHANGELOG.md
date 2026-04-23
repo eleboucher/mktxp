@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.6](https://github.com/eleboucher/mktxp/compare/0.0.5...0.0.6) (2026-03-06)
+
+
+### Features
+
+* add dhcpv6 support ([fdfc360](https://github.com/eleboucher/mktxp/commit/fdfc360a9f092dea6ab9865dbfaa6410980fd989))
+
+
+### Bug Fixes
+
+* fix lint ([e4f1f03](https://github.com/eleboucher/mktxp/commit/e4f1f03accb42a454477b50293c1da64cc7defa7))
+
+
+### Miscellaneous Chores
+
+* improve env handling ([6010b6c](https://github.com/eleboucher/mktxp/commit/6010b6c551f48e39376dd4be607c759a4cf71890))
+
 ## [0.0.5](https://github.com/eleboucher/mktxp/compare/0.0.4...0.0.5) (2026-03-06)
 
 
