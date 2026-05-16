@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.0.7](https://github.com/eleboucher/mktxp/compare/0.0.6...0.0.7) (2026-05-16)
+
+
+### Features
+
+* add dhcpv6 support ([fdfc360](https://github.com/eleboucher/mktxp/commit/fdfc360a9f092dea6ab9865dbfaa6410980fd989))
+* add missing collectors ([76f86fd](https://github.com/eleboucher/mktxp/commit/76f86fd703acf1a25231c75672cbe1421b1742ed))
+* add missing metrics ([c0a23dc](https://github.com/eleboucher/mktxp/commit/c0a23dcab191c58c29e6f8d4f422278e5be4f664))
+* allow routers settings to be override by env var ([b41a3c1](https://github.com/eleboucher/mktxp/commit/b41a3c114257fcbd88e81bceedd1dec531677cfd))
+* apply overengineer optimization for memory and cpu ([19b87f5](https://github.com/eleboucher/mktxp/commit/19b87f549771284c8784038527ca74367b40273f))
+* merge health and hw_health ([87e7644](https://github.com/eleboucher/mktxp/commit/87e764476bd4bf466294727cdbc783407f9ae429))
+* properly handle bandwidth ([4df1a68](https://github.com/eleboucher/mktxp/commit/4df1a6844b7a94de8ed3867e971b17e08c0c019c))
+* remove duplicated metrics ([0ce2ed3](https://github.com/eleboucher/mktxp/commit/0ce2ed39380998a353e8313f00d7c02ee8ac4d97))
+* rewrite mktxp in golang ([523359e](https://github.com/eleboucher/mktxp/commit/523359ed958f1667434829148c31d27290c86ba5))
+* **speedtest:** use github.com/showwin/speedtest-go ([2af5808](https://github.com/eleboucher/mktxp/commit/2af5808e0cc87e246817523ebb87edcbc787c4c4))
+* use counter where it's accumulating data ([b70afb8](https://github.com/eleboucher/mktxp/commit/b70afb89ec063bfbf00d4af0a07bd4a164f77669))
+* use header for scrape timeout ([b7b603d](https://github.com/eleboucher/mktxp/commit/b7b603daafddb8c001c0eec8041c96c51fccf313))
+* use semaphore to handle concurrency ([98466ad](https://github.com/eleboucher/mktxp/commit/98466adfcd0c70272177f94a95402b2b15cbe370))
+
+
+### Bug Fixes
+
+* **ci:** fix build and release ci ([edb8b45](https://github.com/eleboucher/mktxp/commit/edb8b4545f0dd3bfe9f84e124d2af84daf6aaa4a))
+* **ci:** update golangci lint version ([fd67825](https://github.com/eleboucher/mktxp/commit/fd67825e611d86da9de7ec3c932ca2fde88805d7))
+* clean duplicated labels ([f91adf5](https://github.com/eleboucher/mktxp/commit/f91adf5ffe188eb10d45205584b00694de131208))
+* correctly handle client mutex to avoid deadlock ([e30881f](https://github.com/eleboucher/mktxp/commit/e30881ffaf5101e8afc3cc5df604a8f11b2cafe3))
+* fix lint ([e4f1f03](https://github.com/eleboucher/mktxp/commit/e4f1f03accb42a454477b50293c1da64cc7defa7))
+* fix lint ([2ed3673](https://github.com/eleboucher/mktxp/commit/2ed36734088d5d42ec827e3203f96955bfa03a1d))
+* fix the tests ([e6a0e28](https://github.com/eleboucher/mktxp/commit/e6a0e2847a945604dcf9bed2c7d938a3197fc299))
+* fix typo in metrics declaration ([84b0e30](https://github.com/eleboucher/mktxp/commit/84b0e30ab6bc3e051e435d890ec319361821cac9))
+* handle missing configuration ([8391b98](https://github.com/eleboucher/mktxp/commit/8391b98a91799607bcd72a199b3cc3fe109897b8))
+* rename label correctly ([001e632](https://github.com/eleboucher/mktxp/commit/001e632123fcfe0cf5f44602db8be284b180342a))
+
+
+### Documentation
+
+* update readme with the latest feature ([ed26716](https://github.com/eleboucher/mktxp/commit/ed267166aaafe7475bc575bfc6a914932def78b1))
+
+
+### Miscellaneous Chores
+
+* clean up ([170356a](https://github.com/eleboucher/mktxp/commit/170356ac5925a3b9273a777a3ca8878830faecc6))
+* delete unecessary config ([6899ba2](https://github.com/eleboucher/mktxp/commit/6899ba297ead4d6505114d1ec3347a4287a3d1f9))
+* **deps:** update all non-major dependencies ([#17](https://github.com/eleboucher/mktxp/issues/17)) ([0155326](https://github.com/eleboucher/mktxp/commit/01553260fe71c0d4f1f0ae81be3214f3d064a72f))
+* **deps:** update docker/build-push-action action to v7 ([#12](https://github.com/eleboucher/mktxp/issues/12)) ([79fa627](https://github.com/eleboucher/mktxp/commit/79fa6277688dccacbe8b7fa2af943f565b94908c))
+* **deps:** update docker/metadata-action action to v6 ([#7](https://github.com/eleboucher/mktxp/issues/7)) ([f9ffcc9](https://github.com/eleboucher/mktxp/commit/f9ffcc9c0f7b926689b6f3b928190689b48ea631))
+* **deps:** update googleapis/release-please-action action to v5 ([3d8517f](https://github.com/eleboucher/mktxp/commit/3d8517fcae6882bf121a5b406b88378bfe01d440))
+* **errors:** correctly handle error ([0d99056](https://github.com/eleboucher/mktxp/commit/0d990566e50844d947d7791c99c128b9cd433060))
+* handle prometheus error better ([a3cef6a](https://github.com/eleboucher/mktxp/commit/a3cef6a2ed3c0b38cb16c9c3fa5d9ab363aa3bd1))
+* improve bandwidth concurrency ([906ac3b](https://github.com/eleboucher/mktxp/commit/906ac3bb3254e3f57f40c55b9fabf4f2454acd6e))
+* improve env handling ([6010b6c](https://github.com/eleboucher/mktxp/commit/6010b6c551f48e39376dd4be607c759a4cf71890))
+* improve logging in case of insecure connection ([098457f](https://github.com/eleboucher/mktxp/commit/098457f8ab81560d891fcfa46eeaecc72369b2ca))
+* **main:** release 0.0.1 ([#1](https://github.com/eleboucher/mktxp/issues/1)) ([4d26fe8](https://github.com/eleboucher/mktxp/commit/4d26fe8d35934768123bfaf85a034a96f1e4b078))
+* **main:** release 0.0.2 ([#9](https://github.com/eleboucher/mktxp/issues/9)) ([0d1931d](https://github.com/eleboucher/mktxp/commit/0d1931d7631d3cf2e913e23d3bec5e955d7d2894))
+* **main:** release 0.0.3 ([#10](https://github.com/eleboucher/mktxp/issues/10)) ([d56d8b6](https://github.com/eleboucher/mktxp/commit/d56d8b672b552f3ed60b80667052bec08d766ae8))
+* **main:** release 0.0.4 ([#11](https://github.com/eleboucher/mktxp/issues/11)) ([a4df197](https://github.com/eleboucher/mktxp/commit/a4df1972cf54389370833499ee77f649ca896060))
+* **main:** release 0.0.5 ([#15](https://github.com/eleboucher/mktxp/issues/15)) ([b10addc](https://github.com/eleboucher/mktxp/commit/b10addca50cf8446da9be547fad8e537946d4671))
+* **main:** release 0.0.6 ([#16](https://github.com/eleboucher/mktxp/issues/16)) ([85c3316](https://github.com/eleboucher/mktxp/commit/85c33162710f5997190f6141b42f163f8d29d70c))
+
+
+### Code Refactoring
+
+* refactor config ([6545b9f](https://github.com/eleboucher/mktxp/commit/6545b9f94a1cb9619d70e4edca90a7194d30b139))
+* rewrite the collector to be clean ([5f947c8](https://github.com/eleboucher/mktxp/commit/5f947c86efb56a9a59ac9048664c4037a62c6d6e))
+
 ## [0.0.6](https://github.com/eleboucher/mktxp/compare/0.0.5...0.0.6) (2026-05-16)
 
 
