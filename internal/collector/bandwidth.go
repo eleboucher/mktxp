@@ -2,7 +2,9 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
@@ -11,6 +13,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/showwin/speedtest-go/speedtest"
 )
+
+var errInternetUnreachable = errors.New("internet unreachable")
+
+func internetReachable(host string, timeout time.Duration) error {
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, "53"), timeout)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
 
 type BandwidthCollector struct {
 	mu              sync.Mutex
@@ -70,6 +82,12 @@ func (c *BandwidthCollector) Collect(ctx context.Context, e *entry.RouterEntry, 
 }
 
 func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorName string) {
+	sysCfg := config.Handler.SystemEntry()
+	if !sysCfg.Bandwidth {
+		slog.Info("Bandwidth tests disabled by config; not starting background task", "collector", collectorName)
+		return
+	}
+
 	go func() {
 		slog.Info("Starting background bandwidth test", "collector", collectorName)
 
@@ -108,6 +126,13 @@ func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorN
 }
 
 func (c *BandwidthCollector) runSpeedtest() (*speedtest.Server, error) {
+	sysCfg := config.Handler.SystemEntry()
+	if host := sysCfg.BandwidthTestDNSServer; host != "" {
+		if err := internetReachable(host, 3*time.Second); err != nil {
+			return nil, errInternetUnreachable
+		}
+	}
+
 	client := speedtest.New()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

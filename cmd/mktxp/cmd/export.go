@@ -70,7 +70,7 @@ func runExport(cmd *cobra.Command, args []string) {
 
 	applyExportOverrides(sysCfg)
 
-	if exportVerbose {
+	if exportVerbose || sysCfg.VerboseMode {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelDebug,
 		}))

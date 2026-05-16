@@ -17,13 +17,15 @@ import (
 )
 
 type Server struct {
-	config       *config.SystemConfig
-	registry     *collector.Registry
-	httpServer   *http.Server
-	entries      map[string]*entry.RouterEntry
-	mu           sync.RWMutex
-	semaphore    chan struct{}
-	totalTimeout time.Duration
+	config        *config.SystemConfig
+	registry      *collector.Registry
+	httpServer    *http.Server
+	entries       map[string]*entry.RouterEntry
+	mu            sync.RWMutex
+	semaphore     chan struct{}
+	totalTimeout  time.Duration
+	lastCollectMu sync.Mutex
+	lastCollectAt time.Time
 }
 
 type Options struct {
@@ -39,6 +41,9 @@ func New(cfg *config.SystemConfig, opts *Options) *Server {
 	semSize := cfg.MaxWorkerThreads
 	if semSize <= 0 {
 		semSize = 5
+	}
+	if !cfg.FetchRoutersInParallel {
+		semSize = 1
 	}
 
 	return &Server{
@@ -131,8 +136,29 @@ func (s *Server) getScrapeTimeout(r *http.Request) time.Duration {
 	return timeout
 }
 
+func (s *Server) reserveCollectSlot() bool {
+	interval := time.Duration(s.config.MinimalCollectInterval) * time.Second
+	if interval <= 0 {
+		return true
+	}
+	s.lastCollectMu.Lock()
+	defer s.lastCollectMu.Unlock()
+	now := time.Now()
+	if !s.lastCollectAt.IsZero() && now.Sub(s.lastCollectAt) < interval {
+		return false
+	}
+	s.lastCollectAt = now
+	return true
+}
+
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("handleMetrics called", "num_entries", len(s.entries))
+
+	if !s.reserveCollectSlot() {
+		slog.Debug("Scrape deferred by minimal_collect_interval")
+		http.Error(w, "Scrape deferred by minimal_collect_interval", http.StatusTooManyRequests)
+		return
+	}
 	s.mu.RLock()
 	entries := make([]*entry.RouterEntry, 0, len(s.entries))
 	for _, e := range s.entries {
@@ -215,6 +241,12 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 
 	if !exists {
 		http.Error(w, fmt.Sprintf("Unknown target: %s", target), http.StatusNotFound)
+		return
+	}
+
+	if !s.reserveCollectSlot() {
+		slog.Debug("Probe deferred by minimal_collect_interval", "target", target)
+		http.Error(w, "Probe deferred by minimal_collect_interval", http.StatusTooManyRequests)
 		return
 	}
 
