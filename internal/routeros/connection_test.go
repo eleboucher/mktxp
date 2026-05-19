@@ -3,6 +3,7 @@ package routeros
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,9 +18,19 @@ type fakeClient struct {
 	runErr    error
 	listenErr error
 	closed    bool
+
+	blockRun bool
+	started  chan struct{}
 }
 
-func (f *fakeClient) RunArgsContext(_ context.Context, _ []string) (*routeros.Reply, error) {
+func (f *fakeClient) RunArgsContext(ctx context.Context, _ []string) (*routeros.Reply, error) {
+	if f.started != nil {
+		close(f.started)
+	}
+	if f.blockRun {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	return nil, f.runErr
 }
 
@@ -45,31 +56,31 @@ func TestConnectDelay(t *testing.T) {
 			name:         "no_failures_returns_initial",
 			failureCount: 0,
 			backoff:      DefaultBackoff,
-			want:         120 * time.Second,
+			want:         10 * time.Second,
 		},
 		{
 			name:         "five_failures_doubles",
 			failureCount: 5,
 			backoff:      DefaultBackoff,
-			want:         240 * time.Second, // 120 * (1 + 5/5)
+			want:         20 * time.Second, // 10 * (1 + 5/5)
 		},
 		{
 			name:         "ten_failures_triples",
 			failureCount: 10,
 			backoff:      DefaultBackoff,
-			want:         360 * time.Second, // 120 * (1 + 10/5)
+			want:         30 * time.Second, // 10 * (1 + 10/5)
 		},
 		{
 			name:         "capped_at_max",
-			failureCount: 50,
+			failureCount: 5000,
 			backoff:      DefaultBackoff,
-			want:         900 * time.Second, // would be 1320s, capped
+			want:         900 * time.Second,
 		},
 		{
 			name:         "zero_divisor_falls_back_to_default",
 			failureCount: 0,
 			backoff:      BackoffConfig{Divisor: 0},
-			want:         120 * time.Second,
+			want:         10 * time.Second,
 		},
 		{
 			name:         "custom_backoff",
@@ -332,6 +343,82 @@ func TestDisconnect_WhenNotConnected(t *testing.T) {
 
 	c := NewConnection(ConnectionConfig{})
 	c.Disconnect() // must not panic
+}
+
+func TestRun_ContextCanceledDoesNotCloseClient(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeClient{runErr: context.Canceled}
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.client = fake
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.Run(ctx, "/foo")
+	if err == nil {
+		t.Fatal("expected error from Run")
+	}
+	if c.client == nil {
+		t.Error("client should not be cleared on context cancellation")
+	}
+	if fake.closed {
+		t.Error("Close should not have been called on context cancellation")
+	}
+	if c.failureCount != 0 {
+		t.Errorf("failureCount = %d, want 0", c.failureCount)
+	}
+}
+
+func TestRun_ContextDeadlineExceededDoesNotCloseClient(t *testing.T) {
+	t.Parallel()
+
+	// started defeats a race where the deadline fires before Run reaches the RPC.
+	started := make(chan struct{})
+	fake := &fakeClient{blockRun: true, started: started}
+
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.client = fake
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := c.Run(ctx, "/foo")
+	if err == nil {
+		t.Fatal("expected error from Run")
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("RunArgsContext was never entered; deadline fired too early to exercise the in-flight path")
+	}
+	if c.client == nil {
+		t.Error("client should not be cleared on deadline exceeded")
+	}
+	if fake.closed {
+		t.Error("Close should not have been called on deadline exceeded")
+	}
+	if c.failureCount != 0 {
+		t.Errorf("failureCount = %d, want 0", c.failureCount)
+	}
+}
+
+func TestIsContextError(t *testing.T) {
+	t.Parallel()
+
+	if isContextError(errors.New("boom")) {
+		t.Error("plain error must not be classified as context error")
+	}
+	if !isContextError(context.Canceled) {
+		t.Error("context.Canceled must be classified as context error")
+	}
+	if !isContextError(context.DeadlineExceeded) {
+		t.Error("context.DeadlineExceeded must be classified as context error")
+	}
+	wrapped := fmt.Errorf("api call: %w", context.DeadlineExceeded)
+	if !isContextError(wrapped) {
+		t.Error("wrapped context.DeadlineExceeded must be classified as context error")
+	}
 }
 
 // TestRun_ConcurrentDisconnect exercises the locking paths under the race

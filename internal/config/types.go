@@ -261,7 +261,7 @@ func hardcodedSystemDefaults() SystemConfig {
 	return SystemConfig{
 		Listen:                         "0.0.0.0:49090",
 		SocketTimeout:                  2,
-		InitialDelayOnFailure:          120,
+		InitialDelayOnFailure:          10,
 		MaxDelayOnFailure:              900,
 		DelayIncDiv:                    5,
 		Bandwidth:                      false,

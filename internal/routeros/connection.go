@@ -3,8 +3,10 @@ package routeros
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -13,6 +15,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Mikrotik silently reaps idle API sessions; without TCP keepalive the next
+// scrape after an idle gap fails with "connection closed".
+const tcpKeepAlive = 30 * time.Second
+
 type BackoffConfig struct {
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
@@ -20,7 +26,7 @@ type BackoffConfig struct {
 }
 
 var DefaultBackoff = BackoffConfig{
-	InitialDelay: 120 * time.Second,
+	InitialDelay: 10 * time.Second,
 	MaxDelay:     900 * time.Second,
 	Divisor:      5,
 }
@@ -130,7 +136,8 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 
 	reply, err := cl.RunArgsContext(ctx, sentence)
 	if err != nil {
-		if c.client == cl {
+		// ctx cancel means the caller gave up; don't tear down a healthy socket.
+		if !isContextError(err) && c.client == cl {
 			_ = c.client.Close()
 			c.client = nil
 			c.recordFailure(time.Now())
@@ -152,6 +159,10 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 	return result, nil
 }
 
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 func (c *Connection) dial(ctx context.Context, username, password string) (*routeros.Client, error) {
 	addr := fmt.Sprintf("%s:%d", c.cfg.Hostname, c.cfg.Port)
 	timeout := c.cfg.SocketTimeout
@@ -162,34 +173,50 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if !c.cfg.UseSSL {
-		return routeros.DialContext(ctx, addr, username, password)
-	}
+	netDialer := &net.Dialer{KeepAlive: tcpKeepAlive}
 
-	tlsCfg := &tls.Config{ServerName: c.cfg.Hostname}
-
-	if c.cfg.NoSSLCertificate || !c.cfg.SSLCertificateVerify || !c.cfg.SSLCheckHostname {
-		var insecureReasons []string
-		if c.cfg.NoSSLCertificate {
-			insecureReasons = append(insecureReasons, "NoSSLCertificate")
+	var conn net.Conn
+	var err error
+	if c.cfg.UseSSL {
+		tlsCfg := &tls.Config{ServerName: c.cfg.Hostname}
+		if c.cfg.NoSSLCertificate || !c.cfg.SSLCertificateVerify || !c.cfg.SSLCheckHostname {
+			var insecureReasons []string
+			if c.cfg.NoSSLCertificate {
+				insecureReasons = append(insecureReasons, "NoSSLCertificate")
+			}
+			if !c.cfg.SSLCertificateVerify {
+				insecureReasons = append(insecureReasons, "SSLCertificateVerify disabled")
+			}
+			if !c.cfg.SSLCheckHostname {
+				insecureReasons = append(insecureReasons, "SSLCheckHostname disabled")
+			}
+			slog.Error("TLS security disabled - certificate verification bypassed",
+				"host", c.cfg.Hostname,
+				"reasons", insecureReasons)
+			tlsCfg.InsecureSkipVerify = true //nolint:gosec
+		} else {
+			slog.Info("Connecting with TLS (secure mode)", "host", c.cfg.Hostname)
 		}
-		if !c.cfg.SSLCertificateVerify {
-			insecureReasons = append(insecureReasons, "SSLCertificateVerify disabled")
-		}
-		if !c.cfg.SSLCheckHostname {
-			insecureReasons = append(insecureReasons, "SSLCheckHostname disabled")
-		}
-
-		slog.Error("TLS security disabled - certificate verification bypassed",
-			"host", c.cfg.Hostname,
-			"reasons", insecureReasons)
-
-		tlsCfg.InsecureSkipVerify = true //nolint:gosec
+		conn, err = (&tls.Dialer{NetDialer: netDialer, Config: tlsCfg}).DialContext(ctx, "tcp", addr)
 	} else {
-		slog.Info("Connecting with TLS (secure mode)", "host", c.cfg.Hostname)
+		conn, err = netDialer.DialContext(ctx, "tcp", addr)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return routeros.DialTLSContext(ctx, addr, username, password, tlsCfg)
+	client, err := routeros.NewClient(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	if err := client.LoginContext(ctx, username, password); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func (c *Connection) RunStream(ctx context.Context, callback func(map[string]string), sentence ...string) error {
@@ -203,7 +230,7 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 
 	l, err := cl.ListenArgsQueue(sentence, 1000)
 	if err != nil {
-		if c.client == cl {
+		if !isContextError(err) && c.client == cl {
 			_ = cl.Close()
 			c.client = nil
 			c.recordFailure(time.Now())
@@ -231,13 +258,15 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 			if !ok {
 				// Stream finished or connection dropped.
 				if err := l.Err(); err != nil {
-					c.mu.Lock()
-					if c.client == cl {
-						_ = cl.Close()
-						c.client = nil
-						c.recordFailure(time.Now())
+					if !isContextError(err) {
+						c.mu.Lock()
+						if c.client == cl {
+							_ = cl.Close()
+							c.client = nil
+							c.recordFailure(time.Now())
+						}
+						c.mu.Unlock()
 					}
-					c.mu.Unlock()
 					return err
 				}
 				return ctx.Err()
@@ -281,7 +310,7 @@ func (c *Connection) inBackoff(ctx context.Context, now time.Time) bool {
 	delay := c.connectDelay()
 	remaining := delay - now.Sub(c.lastFailure)
 	if remaining > 0 {
-		slog.DebugContext(ctx, "In connect timeout",
+		slog.InfoContext(ctx, "Router in connect backoff",
 			"name", c.cfg.RouterName,
 			"remaining_secs", int(remaining.Seconds()),
 			"failures", c.failureCount)
