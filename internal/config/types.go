@@ -260,7 +260,7 @@ func hardcodedDefaults() RouterConfigEntry {
 func hardcodedSystemDefaults() SystemConfig {
 	return SystemConfig{
 		Listen:                         "0.0.0.0:49090",
-		SocketTimeout:                  2,
+		SocketTimeout:                  10,
 		InitialDelayOnFailure:          10,
 		MaxDelayOnFailure:              900,
 		DelayIncDiv:                    5,

@@ -287,10 +287,12 @@ func (e *RouterEntry) connectionState() ConnectionState {
 // Must be called with e.mu held.
 func detectWirelessType(ctx context.Context, e *RouterEntry) WirelessType {
 	if !e.APIConn.IsConnected() {
-		return WirelessTypeWireless // default fallback
+		slog.Warn("WirelessType fallback: not-connected", "router", e.RouterName)
+		return WirelessTypeWireless
 	}
 	records, err := e.APIConn.Run(ctx, "/system/package/print", "=.proplist=name,disabled")
 	if err != nil {
+		slog.Warn("WirelessType fallback: package-print failed", "router", e.RouterName, "err", err)
 		return WirelessTypeWireless
 	}
 	for _, r := range records {
@@ -308,10 +310,12 @@ func detectWirelessType(ctx context.Context, e *RouterEntry) WirelessType {
 	}
 	// Check for RouterOS 7.13+ built-in WiFi CAPsMAN
 	verRecords, err := e.APIConn.Run(ctx, "/system/resource/print", "=.proplist=version")
-	if err == nil && len(verRecords) > 0 {
-		if utils.BuiltinWiFiCAPsMANVersion(verRecords[0]["version"]) {
-			return WirelessTypeWiFi
-		}
+	if err != nil {
+		slog.Warn("WirelessType fallback: version-print failed", "router", e.RouterName, "err", err)
+		return WirelessTypeWireless
+	}
+	if len(verRecords) > 0 && utils.BuiltinWiFiCAPsMANVersion(verRecords[0]["version"]) {
+		return WirelessTypeWiFi
 	}
 	return WirelessTypeWireless
 }

@@ -60,11 +60,14 @@ type apiClient interface {
 	Close() error
 }
 
+// Connection holds two API sessions per router so RunStream's async mode
+// can't interfere with Run. See acquireStreamClient for why.
 type Connection struct {
 	cfg ConnectionConfig
 
 	mu           sync.Mutex
-	client       apiClient
+	runClient    apiClient
+	streamClient apiClient
 	lastFailure  time.Time
 	failureCount int
 }
@@ -80,14 +83,14 @@ func (c *Connection) RouterName() string {
 func (c *Connection) IsConnected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.client != nil
+	return c.runClient != nil
 }
 
 func (c *Connection) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.client != nil {
+	if c.runClient != nil {
 		return nil
 	}
 
@@ -109,7 +112,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 		return fmt.Errorf("routers: connect %s@%s: %w", c.cfg.RouterName, c.cfg.Hostname, err)
 	}
 
-	c.client = client
+	c.runClient = client
 	c.failureCount = 0
 	c.lastFailure = time.Time{}
 	slog.Info("Connection established", "name", c.cfg.RouterName, "host", c.cfg.Hostname)
@@ -119,15 +122,47 @@ func (c *Connection) Connect(ctx context.Context) error {
 func (c *Connection) Disconnect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.client != nil {
-		_ = c.client.Close()
-		c.client = nil
+	c.closeAllLocked()
+}
+
+// closeAllLocked closes both clients. Caller must hold c.mu.
+func (c *Connection) closeAllLocked() {
+	if c.runClient != nil {
+		_ = c.runClient.Close()
+		c.runClient = nil
+	}
+	if c.streamClient != nil {
+		_ = c.streamClient.Close()
+		c.streamClient = nil
+	}
+}
+
+// failRunLocked closes only runClient if it's still the same instance we
+// observed. Stream-side state is preserved so a healthy in-flight RunStream
+// isn't mid-cancelled by an unrelated Run failure.
+func (c *Connection) failRunLocked(cl apiClient) {
+	if c.runClient == cl {
+		_ = c.runClient.Close()
+		c.runClient = nil
+		c.recordFailure(time.Now())
+	}
+}
+
+// failStream closes only streamClient if it's still cl. Symmetric to
+// failRunLocked.
+func (c *Connection) failStream(cl apiClient) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.streamClient == cl {
+		_ = c.streamClient.Close()
+		c.streamClient = nil
+		c.recordFailure(time.Now())
 	}
 }
 
 func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]string, error) {
 	c.mu.Lock()
-	cl := c.client
+	cl := c.runClient
 
 	if cl == nil {
 		c.mu.Unlock()
@@ -137,10 +172,8 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 	reply, err := cl.RunArgsContext(ctx, sentence)
 	if err != nil {
 		// ctx cancel means the caller gave up; don't tear down a healthy socket.
-		if !isContextError(err) && c.client == cl {
-			_ = c.client.Close()
-			c.client = nil
-			c.recordFailure(time.Now())
+		if !isContextError(err) {
+			c.failRunLocked(cl)
 		}
 		c.mu.Unlock()
 		return nil, err
@@ -220,25 +253,18 @@ func (c *Connection) dial(ctx context.Context, username, password string) (*rout
 }
 
 func (c *Connection) RunStream(ctx context.Context, callback func(map[string]string), sentence ...string) error {
-	c.mu.Lock()
-	cl := c.client
-
-	if cl == nil {
-		c.mu.Unlock()
-		return fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
+	cl, err := c.acquireStreamClient(ctx)
+	if err != nil {
+		return err
 	}
 
 	l, err := cl.ListenArgsQueue(sentence, 1000)
 	if err != nil {
-		if !isContextError(err) && c.client == cl {
-			_ = cl.Close()
-			c.client = nil
-			c.recordFailure(time.Now())
+		if !isContextError(err) {
+			c.failStream(cl)
 		}
-		c.mu.Unlock()
 		return err
 	}
-	c.mu.Unlock()
 
 	ctxChan := ctx.Done()
 	var cancelOnce sync.Once
@@ -259,13 +285,7 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 				// Stream finished or connection dropped.
 				if err := l.Err(); err != nil {
 					if !isContextError(err) {
-						c.mu.Lock()
-						if c.client == cl {
-							_ = cl.Close()
-							c.client = nil
-							c.recordFailure(time.Now())
-						}
-						c.mu.Unlock()
+						c.failStream(cl)
 					}
 					return err
 				}
@@ -278,6 +298,48 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 			}
 		}
 	}
+}
+
+// acquireStreamClient returns the streamClient, dialing a second API session
+// on first use. Dialing happens *without* c.mu held — a TLS handshake +
+// LoginContext can take seconds and would otherwise block every Run on the
+// same Connection. On race we close the loser and use the winner.
+func (c *Connection) acquireStreamClient(ctx context.Context) (apiClient, error) {
+	c.mu.Lock()
+	if c.streamClient != nil {
+		cl := c.streamClient
+		c.mu.Unlock()
+		return cl, nil
+	}
+	if c.runClient == nil {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("routers: not connected to %s@%s", c.cfg.RouterName, c.cfg.Hostname)
+	}
+	username, password, err := c.resolveCredentials()
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := c.dial(ctx, username, password)
+	if err != nil {
+		c.mu.Lock()
+		c.recordFailure(time.Now())
+		c.mu.Unlock()
+		return nil, fmt.Errorf("routers: stream connect %s@%s: %w", c.cfg.RouterName, c.cfg.Hostname, err)
+	}
+
+	c.mu.Lock()
+	if c.streamClient != nil {
+		// Lost the race; another goroutine already dialed.
+		winner := c.streamClient
+		c.mu.Unlock()
+		_ = client.Close()
+		return winner, nil
+	}
+	c.streamClient = client
+	c.mu.Unlock()
+	return client, nil
 }
 
 func (c *Connection) resolveCredentials() (string, string, error) {

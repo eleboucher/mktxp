@@ -21,6 +21,8 @@ type fakeClient struct {
 
 	blockRun bool
 	started  chan struct{}
+
+	listenCalls int
 }
 
 func (f *fakeClient) RunArgsContext(ctx context.Context, _ []string) (*routeros.Reply, error) {
@@ -35,6 +37,7 @@ func (f *fakeClient) RunArgsContext(ctx context.Context, _ []string) (*routeros.
 }
 
 func (f *fakeClient) ListenArgsQueue(_ []string, _ int) (*routeros.ListenReply, error) {
+	f.listenCalls++
 	return nil, f.listenErr
 }
 
@@ -284,22 +287,27 @@ func TestRun_NotConnected(t *testing.T) {
 	}
 }
 
-func TestRun_ErrorResetsClient(t *testing.T) {
+func TestRun_ErrorResetsRunClientOnly(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeClient{runErr: errors.New("connection reset")}
+	runFake := &fakeClient{runErr: errors.New("connection reset")}
+	streamFake := &fakeClient{}
 	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
-	c.client = fake
+	c.runClient = runFake
+	c.streamClient = streamFake
 
 	_, err := c.Run(context.Background(), "/foo")
 	if err == nil {
 		t.Fatal("expected error from Run")
 	}
-	if c.client != nil {
-		t.Error("client should be nil after error")
+	if c.runClient != nil {
+		t.Error("runClient should be nil after error")
 	}
-	if !fake.closed {
-		t.Error("Close should have been called")
+	if !runFake.closed {
+		t.Error("runClient should have been closed")
+	}
+	if c.streamClient == nil || streamFake.closed {
+		t.Error("streamClient must survive an unrelated runClient failure")
 	}
 	if c.failureCount != 1 {
 		t.Errorf("failureCount = %d, want 1", c.failureCount)
@@ -316,25 +324,55 @@ func TestRunStream_NotConnected(t *testing.T) {
 	}
 }
 
-func TestRunStream_ListenErrorResetsClient(t *testing.T) {
+func TestRunStream_ListenErrorResetsStreamClientOnly(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeClient{listenErr: errors.New("listen failed")}
+	runFake := &fakeClient{}
+	streamFake := &fakeClient{listenErr: errors.New("listen failed")}
 	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
-	c.client = fake
+	c.runClient = runFake
+	c.streamClient = streamFake
 
 	err := c.RunStream(context.Background(), func(map[string]string) {}, "/foo")
 	if err == nil {
 		t.Fatal("expected error from RunStream")
 	}
-	if c.client != nil {
-		t.Error("client should be nil after listen error")
+	if c.streamClient != nil {
+		t.Error("streamClient should be nil after a listen failure")
 	}
-	if !fake.closed {
-		t.Error("Close should have been called")
+	if !streamFake.closed {
+		t.Error("streamClient should have been closed")
+	}
+	if c.runClient == nil || runFake.closed {
+		t.Error("runClient must survive an unrelated streamClient failure")
 	}
 	if c.failureCount != 1 {
 		t.Errorf("failureCount = %d, want 1", c.failureCount)
+	}
+}
+
+// TestRunStream_UsesStreamClient verifies RunStream does not touch runClient.
+// This is the isolation that protects Run from the go-routeros async-mode trap
+// triggered by Listen-induced ctx cancellation.
+func TestRunStream_UsesStreamClient(t *testing.T) {
+	t.Parallel()
+
+	runFake := &fakeClient{}
+	streamFake := &fakeClient{listenErr: errors.New("stream listen err")}
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.runClient = runFake
+	c.streamClient = streamFake
+
+	_ = c.RunStream(context.Background(), func(map[string]string) {}, "/foo")
+
+	if runFake.listenCalls != 0 {
+		t.Errorf("runClient.ListenArgsQueue called %d times; RunStream must not touch runClient", runFake.listenCalls)
+	}
+	if runFake.closed {
+		t.Error("runClient must not be closed by a streamClient failure")
+	}
+	if !streamFake.closed {
+		t.Error("streamClient should have been closed by the listen error")
 	}
 }
 
@@ -350,7 +388,7 @@ func TestRun_ContextCanceledDoesNotCloseClient(t *testing.T) {
 
 	fake := &fakeClient{runErr: context.Canceled}
 	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
-	c.client = fake
+	c.runClient = fake
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -359,7 +397,7 @@ func TestRun_ContextCanceledDoesNotCloseClient(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from Run")
 	}
-	if c.client == nil {
+	if c.runClient == nil {
 		t.Error("client should not be cleared on context cancellation")
 	}
 	if fake.closed {
@@ -378,7 +416,7 @@ func TestRun_ContextDeadlineExceededDoesNotCloseClient(t *testing.T) {
 	fake := &fakeClient{blockRun: true, started: started}
 
 	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
-	c.client = fake
+	c.runClient = fake
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -392,7 +430,7 @@ func TestRun_ContextDeadlineExceededDoesNotCloseClient(t *testing.T) {
 	default:
 		t.Fatal("RunArgsContext was never entered; deadline fired too early to exercise the in-flight path")
 	}
-	if c.client == nil {
+	if c.runClient == nil {
 		t.Error("client should not be cleared on deadline exceeded")
 	}
 	if fake.closed {

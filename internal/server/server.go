@@ -179,6 +179,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	allCollectors := s.registry.All()
 	var wg sync.WaitGroup
 
+	// Only entries that actually became ready get finalized; we must not
+	// IsDone() routers we never touched (their state may belong to a
+	// concurrent handler).
+	var scrapedMu sync.Mutex
+	var scraped []*entry.RouterEntry
+	defer func() {
+		scrapedMu.Lock()
+		defer scrapedMu.Unlock()
+		for _, e := range scraped {
+			e.IsDone()
+		}
+	}()
+
 	for _, e := range entries {
 		if e == nil || !e.ConfigEntry.Enabled {
 			continue
@@ -200,13 +213,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			scrapedMu.Lock()
+			scraped = append(scraped, routerEntry)
+			scrapedMu.Unlock()
+
 			for _, c := range allCollectors {
-				_ = registry.Register(&routerCollector{
+				if err := registry.Register(&routerCollector{
 					collector:      c,
 					entry:          routerEntry,
 					ctx:            ctx,
 					scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
-				})
+				}); err != nil {
+					slog.Warn("Failed to register routerCollector", "router", routerEntry.RouterName, "collector", c.Name(), "error", err)
+				}
 			}
 		}(e)
 	}
@@ -266,16 +285,19 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Target router is unreachable", http.StatusBadGateway)
 		return
 	}
+	defer e.IsDone()
 
 	registry := prometheus.NewRegistry()
 	if s.registry != nil {
 		for _, c := range s.registry.All() {
-			_ = registry.Register(&routerCollector{
+			if err := registry.Register(&routerCollector{
 				collector:      c,
 				entry:          e,
 				ctx:            ctx,
 				scrapeDuration: time.Duration(s.config.MaxScrapeDuration) * time.Second,
-			})
+			}); err != nil {
+				slog.Warn("Failed to register routerCollector", "router", e.RouterName, "collector", c.Name(), "error", err)
+			}
 		}
 	}
 
