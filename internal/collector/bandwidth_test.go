@@ -35,3 +35,12 @@ func TestBandwidthCollector_StartBackgroundTestRespectsDisabledFlag(t *testing.T
 		t.Error("internetResults should remain nil when bandwidth is disabled")
 	}
 }
+
+func TestBandwidthCollector_IsSingleton(t *testing.T) {
+	a := NewBandwidthCollector()
+	b := NewBandwidthCollector()
+
+	if a != b {
+		t.Fatal("NewBandwidthCollector should return the same instance on repeated calls")
+	}
+}

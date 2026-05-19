@@ -28,9 +28,20 @@ type BandwidthCollector struct {
 	mu              sync.Mutex
 	lastTestTime    time.Time
 	internetResults *speedtest.Server
+	startOnce       sync.Once
 }
 
-func NewBandwidthCollector() *BandwidthCollector { return &BandwidthCollector{} }
+var (
+	bandwidthInstance *BandwidthCollector
+	bandwidthOnce     sync.Once
+)
+
+func NewBandwidthCollector() *BandwidthCollector {
+	bandwidthOnce.Do(func() {
+		bandwidthInstance = &BandwidthCollector{}
+	})
+	return bandwidthInstance
+}
 
 func (c *BandwidthCollector) Name() string { return "bandwidth" }
 
@@ -88,41 +99,43 @@ func (c *BandwidthCollector) StartBackgroundTest(ctx context.Context, collectorN
 		return
 	}
 
-	go func() {
-		slog.Info("Starting background bandwidth test", "collector", collectorName)
+	c.startOnce.Do(func() {
+		go func() {
+			slog.Info("Starting background bandwidth test", "collector", collectorName)
 
-		runSpeedtestOnce := func() {
-			result, err := c.runSpeedtest()
-			if err != nil {
-				slog.Debug("bandwidth speedtest failed", "collector", collectorName, "err", err)
-				return
+			runSpeedtestOnce := func() {
+				result, err := c.runSpeedtest()
+				if err != nil {
+					slog.Debug("bandwidth speedtest failed", "collector", collectorName, "err", err)
+					return
+				}
+
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.internetResults = result
+				c.lastTestTime = time.Now()
+				slog.Info("Bandwidth test completed successfully", "collector", collectorName,
+					"download_mbps", result.DLSpeed.Mbps(),
+					"upload_mbps", result.ULSpeed.Mbps(),
+					"latency_ms", result.Latency.Milliseconds())
 			}
 
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			c.internetResults = result
-			c.lastTestTime = time.Now()
-			slog.Info("Bandwidth test completed successfully", "collector", collectorName,
-				"download_mbps", result.DLSpeed.Mbps(),
-				"upload_mbps", result.ULSpeed.Mbps(),
-				"latency_ms", result.Latency.Milliseconds())
-		}
+			runSpeedtestOnce()
 
-		runSpeedtestOnce()
+			for {
+				sysCfg := config.Handler.SystemEntry()
+				interval := time.Duration(sysCfg.BandwidthTestInterval) * time.Second
 
-		for {
-			sysCfg := config.Handler.SystemEntry()
-			interval := time.Duration(sysCfg.BandwidthTestInterval) * time.Second
-
-			select {
-			case <-ctx.Done():
-				slog.Info("Stopping background bandwidth test", "collector", collectorName)
-				return
-			case <-time.After(interval):
-				runSpeedtestOnce()
+				select {
+				case <-ctx.Done():
+					slog.Info("Stopping background bandwidth test", "collector", collectorName)
+					return
+				case <-time.After(interval):
+					runSpeedtestOnce()
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 func (c *BandwidthCollector) runSpeedtest() (*speedtest.Server, error) {
