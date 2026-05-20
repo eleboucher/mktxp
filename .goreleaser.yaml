@@ -1,0 +1,33 @@
+---
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: mktxp
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: mktxp
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/eleboucher/mktxp/internal/version.Version={{ .Version }}
+      - -X github.com/eleboucher/mktxp/internal/version.GitCommit={{ .ShortCommit }}
+      - -X github.com/eleboucher/mktxp/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd
+    binary: mktxp
+
+archives:
+  - id: mktxp
+    ids:
+      - mktxp
