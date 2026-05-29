@@ -46,8 +46,8 @@ func (c *EOIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 			help       string
 			parseFloat bool
 		}{
-			"remote-address": {"eoip_remote_address", "EOIP remote address", false},
-			"local-address":  {"eoip_local_address", "EOIP local address", false},
+			"remote_address": {"eoip_remote_address", "EOIP remote address", false},
+			"local_address":  {"eoip_local_address", "EOIP local address", false},
 			"interface":      {"eoip_interface", "EOIP interface", false},
 			"bandwidth":      {"eoip_bandwidth", "EOIP bandwidth", true},
 			"mtu":            {"eoip_mtu", "EOIP MTU size in bytes", true},
@@ -79,7 +79,7 @@ func (c *EOIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 			mb.GaugeVal(ch, "eoip_disabled", "EOIP tunnel disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if fastPathVal, ok := rec["fast-path"]; ok {
+		if fastPathVal, ok := rec["fast_path"]; ok {
 			fastPath := 0.0
 			if fastPathVal == trueStr {
 				fastPath = 1
@@ -89,7 +89,7 @@ func (c *EOIPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 		infoFields := map[string]string{
 			"arp":            "EOIP ARP configuration",
-			"interface-type": "EOIP interface type",
+			"interface_type": "EOIP interface type",
 		}
 
 		for key, help := range infoFields {

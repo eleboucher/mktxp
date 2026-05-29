@@ -35,7 +35,7 @@ func (c *CAPsMANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch
 	if err != nil {
 		slog.Debug("capsman registration-table collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectRegistrations(e, mb, ch, registrations)
+		c.collectRegistrations(ctx, e, mb, ch, registrations)
 	}
 
 	interfaces, err := e.APIConn.Run(ctx, "/caps-man/interface/print")
@@ -60,10 +60,13 @@ func (c *CAPsMANCollector) collectRemoteCaps(_ *entry.RouterEntry, mb *MetricBui
 	}
 }
 
-func (c *CAPsMANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *CAPsMANCollector) collectRegistrations(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	if !e.ConfigEntry.CAPsMANClients {
 		return
 	}
+
+	ensureDHCPCache(ctx, e)
+	de := e.DHCPEntry()
 
 	interfaceCount := make(map[string]float64)
 	var registrationRecords []map[string]string
@@ -85,15 +88,14 @@ func (c *CAPsMANCollector) collectRegistrations(e *entry.RouterEntry, mb *Metric
 	}
 
 	for _, rec := range registrationRecords {
-		rec["dhcp_name"] = rec["host-name"]
-		rec["dhcp_address"] = rec["address"]
+		resolveClientDHCP(rec, de, e.ConfigEntry.InterfaceNameFormat)
 
-		txBytes := ParseFloat(rec["tx-bytes"])
-		rxBytes := ParseFloat(rec["rx-bytes"])
-		signalStrength := ParseFloat(rec["rx-signal"])
+		txBytes := ParseFloat(rec["tx_bytes"])
+		rxBytes := ParseFloat(rec["rx_bytes"])
+		signalStrength := ParseSignalStrength(rec["rx_signal"])
 
 		clientLabels := []string{"dhcp_name", "mac_address"}
-		clientVals := []string{rec["dhcp_name"], rec["mac-address"]}
+		clientVals := []string{rec["dhcp_name"], rec["mac_address"]}
 
 		mb.GaugeVal(ch, "capsman_clients_tx_bytes", "Number of sent packet bytes", txBytes, clientLabels, clientVals)
 		mb.GaugeVal(ch, "capsman_clients_rx_bytes", "Number of received packet bytes", rxBytes, clientLabels, clientVals)
@@ -113,20 +115,20 @@ func (c *CAPsMANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBui
 
 		rec["name"] = FormatInterfaceName(rec["name"], "", e.ConfigEntry.InterfaceNameFormat)
 		labelKeysWithRouter := []string{"name", "mac_address"}
-		labelVals := []string{rec["name"], rec["mac-address"]}
+		labelVals := []string{rec["name"], rec["mac_address"]}
 
 		metricMap := map[string]struct {
 			name       string
 			help       string
 			parseFloat bool
 		}{
-			"mac-address":                {"capsman_mac_address", "CAPsMAN MAC address", false},
-			"ip-address":                 {"capsman_ip_address", "CAPsMAN IP address", false},
-			"remote-interface":           {"capsman_remote_interface", "CAPsMAN remote interface", false},
-			"channel-width":              {"capsman_channel_width", "CAPsMAN channel width", false},
-			"current-state":              {"capsman_current_state", "CAPsMAN current state", false},
-			"current-channel":            {"capsman_current_channel", "CAPsMAN current channel", false},
-			"current-registered-clients": {"capsman_current_registered_clients", "CAPsMAN current registered clients", true},
+			"mac_address":                {"capsman_mac_address", "CAPsMAN MAC address", false},
+			"ip_address":                 {"capsman_ip_address", "CAPsMAN IP address", false},
+			"remote_interface":           {"capsman_remote_interface", "CAPsMAN remote interface", false},
+			"channel_width":              {"capsman_channel_width", "CAPsMAN channel width", false},
+			"current_state":              {"capsman_current_state", "CAPsMAN current state", false},
+			"current_channel":            {"capsman_current_channel", "CAPsMAN current channel", false},
+			"current_registered_clients": {"capsman_current_registered_clients", "CAPsMAN current registered clients", true},
 		}
 
 		for key, meta := range metricMap {
@@ -163,7 +165,7 @@ func (c *CAPsMANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBui
 		}
 
 		infoFields := map[string]string{
-			"interface-mode": "CAPsMAN interface mode (bridge/access-point/etc)",
+			"interface_mode": "CAPsMAN interface mode (bridge/access-point/etc)",
 			"channel":        "CAPsMAN channel configuration",
 			"configuration":  "CAPsMAN configuration",
 		}

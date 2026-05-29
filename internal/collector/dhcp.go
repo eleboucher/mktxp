@@ -106,3 +106,50 @@ func (c *DHCPCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 
 	return nil
 }
+
+// dhcpResolveKeys are the lease fields cached for client MAC/IP resolution.
+var dhcpResolveKeys = []string{
+	"address", "mac_address", "host_name", "comment",
+	"active_address", "server", "client_id", "active_mac_address",
+}
+
+// ensureDHCPCache lazily populates the entry's DHCP lease cache for client name resolution.
+func ensureDHCPCache(ctx context.Context, e *entry.RouterEntry) {
+	e.EnsureDHCPRecords(ctx, func(ctx context.Context, de *entry.RouterEntry) ([]map[string]string, error) {
+		raw, err := de.APIConn.Run(
+			ctx,
+			"/ip/dhcp-server/lease/print",
+			"=.proplist=active-address,address,mac-address,host-name,comment,server,client-id,active-mac-address",
+		)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]string, 0, len(raw))
+		for _, r := range raw {
+			out = append(out, TrimRecord(r, dhcpResolveKeys))
+		}
+		return out, nil
+	})
+}
+
+// resolveDHCPName formats a lease's display name, falling back to the MAC address.
+func resolveDHCPName(lease map[string]string, format string) string {
+	name := lease["host_name"]
+	if name == "" {
+		name = lease["mac_address"]
+	}
+	return FormatInterfaceName(name, lease["comment"], format)
+}
+
+// resolveClientDHCP sets dhcp_name and dhcp_address on a registration record from
+// the DHCP cache, falling back to the MAC when no lease matches.
+func resolveClientDHCP(rec map[string]string, de *entry.RouterEntry, format string) {
+	mac := rec["mac_address"]
+	if lease := de.DHCPRecord(mac); lease != nil {
+		rec["dhcp_name"] = resolveDHCPName(lease, format)
+		rec["dhcp_address"] = lease["address"]
+		return
+	}
+	rec["dhcp_name"] = mac
+	rec["dhcp_address"] = "No DHCP Record"
+}

@@ -43,6 +43,21 @@ func ParseFloat(s string) float64 {
 	return v
 }
 
+// ParseSignalStrength extracts the leading signed number from a RouterOS signal
+// field, which may carry a suffix such as "-55@6Mbps" or "-55dBm".
+func ParseSignalStrength(s string) float64 {
+	end := 0
+	for end < len(s) {
+		c := s[end]
+		if (c == '-' && end == 0) || c == '.' || (c >= '0' && c <= '9') {
+			end++
+			continue
+		}
+		break
+	}
+	return ParseFloat(s[:end])
+}
+
 func ParseBool(s string) float64 {
 	switch strings.ToLower(s) {
 	case trueStr, "yes":

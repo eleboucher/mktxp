@@ -35,7 +35,7 @@ func (c *WLANCollector) Collect(ctx context.Context, e *entry.RouterEntry, ch ch
 	if err != nil {
 		slog.Debug("wlan registration-table collect failed", "router", e.RouterName, "err", err)
 	} else {
-		c.collectRegistrations(e, mb, ch, registrationRecords)
+		c.collectRegistrations(ctx, e, mb, ch, registrationRecords)
 	}
 
 	interfaceRecords, err := e.APIConn.Run(ctx, "/interface/wireless/print")
@@ -60,13 +60,13 @@ func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.M
 			continue
 		}
 
-		if rec["noise-floor"] != "" {
+		if rec["noise_floor"] != "" {
 			noiseFloorRecords = append(noiseFloorRecords, rec)
 		}
-		if rec["overall-tx-ccq"] != "" {
+		if rec["overall_tx_ccq"] != "" {
 			txCCQRecords = append(txCCQRecords, rec)
 		}
-		if rec["registered-clients"] != "" || rec["registered-peers"] != "" {
+		if rec["registered_clients"] != "" || rec["registered_peers"] != "" {
 			registeredClientsRecords = append(registeredClientsRecords, rec)
 		}
 	}
@@ -77,7 +77,7 @@ func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.M
 			help       string
 			parseFloat bool
 		}{
-			"noise-floor": {"wlan_noise_floor", "Noise floor threshold", true},
+			"noise_floor": {"wlan_noise_floor", "Noise floor threshold", true},
 		}
 
 		for _, rec := range noiseFloorRecords {
@@ -104,7 +104,7 @@ func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.M
 			help       string
 			parseFloat bool
 		}{
-			"overall-tx-ccq": {"wlan_overall_tx_ccq", "Client Connection Quality for transmitting", true},
+			"overall_tx_ccq": {"wlan_overall_tx_ccq", "Client Connection Quality for transmitting", true},
 		}
 
 		for _, rec := range txCCQRecords {
@@ -131,8 +131,8 @@ func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.M
 			help       string
 			parseFloat bool
 		}{
-			"registered-clients": {"wlan_registered_clients", "Number of registered clients", true},
-			"registered-peers":   {"wlan_registered_clients", "Number of registered clients", true},
+			"registered_clients": {"wlan_registered_clients", "Number of registered clients", true},
+			"registered_peers":   {"wlan_registered_clients", "Number of registered clients", true},
 		}
 
 		for _, rec := range registeredClientsRecords {
@@ -155,29 +155,31 @@ func (c *WLANCollector) collectMonitor(mb *MetricBuilder, ch chan<- prometheus.M
 	}
 }
 
-func (c *WLANCollector) collectRegistrations(e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
+func (c *WLANCollector) collectRegistrations(ctx context.Context, e *entry.RouterEntry, mb *MetricBuilder, ch chan<- prometheus.Metric, records []map[string]string) {
 	if !e.ConfigEntry.WirelessClients {
 		return
 	}
+
+	ensureDHCPCache(ctx, e)
+	de := e.DHCPEntry()
 
 	var registrationRecords []map[string]string
 
 	for _, raw := range records {
 		rec := TrimRecord(raw, nil)
-		rec["dhcp_name"] = rec["host-name"]
-		rec["dhcp_address"] = rec["address"]
+		resolveClientDHCP(rec, de, e.ConfigEntry.InterfaceNameFormat)
 		registrationRecords = append(registrationRecords, rec)
 	}
 
 	for _, rec := range registrationRecords {
-		txBytes := ParseFloat(rec["tx-bytes"])
-		rxBytes := ParseFloat(rec["rx-bytes"])
-		signalStrength := ParseFloat(rec["signal-strength"])
-		signalToNoise := ParseFloat(rec["signal-to-noise"])
-		txCCQ := ParseFloat(rec["tx-ccq"])
+		txBytes := ParseFloat(rec["tx_bytes"])
+		rxBytes := ParseFloat(rec["rx_bytes"])
+		signalStrength := ParseSignalStrength(rec["signal_strength"])
+		signalToNoise := ParseFloat(rec["signal_to_noise"])
+		txCCQ := ParseFloat(rec["tx_ccq"])
 
 		clientLabels := []string{"dhcp_name", "mac_address"}
-		clientVals := []string{rec["dhcp_name"], rec["mac-address"]}
+		clientVals := []string{rec["dhcp_name"], rec["mac_address"]}
 
 		mb.GaugeVal(ch, "wlan_clients_tx_bytes", "Number of sent packet bytes", txBytes, clientLabels, clientVals)
 		mb.GaugeVal(ch, "wlan_clients_rx_bytes", "Number of received packet bytes", rxBytes, clientLabels, clientVals)
@@ -209,11 +211,11 @@ func (c *WLANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBuilde
 			"ssid":             {"wlan_ssid", "WLAN SSID", false},
 			"bssid":            {"wlan_bssid", "WLAN BSSID", false},
 			"channel":          {"wlan_channel", "WLAN Channel", false},
-			"bridge-mode":      {"wlan_bridge_mode", "WLAN Bridge Mode", false},
-			"security-profile": {"wlan_security_profile", "WLAN Security Profile", false},
-			"channel-width":    {"wlan_channel_width", "WLAN channel width in MHz", true},
+			"bridge_mode":      {"wlan_bridge_mode", "WLAN Bridge Mode", false},
+			"security_profile": {"wlan_security_profile", "WLAN Security Profile", false},
+			"channel_width":    {"wlan_channel_width", "WLAN channel width in MHz", true},
 			"frequency":        {"wlan_frequency", "WLAN operating frequency in MHz", true},
-			"tx-power":         {"wlan_tx_power", "WLAN transmit power in dBm", true},
+			"tx_power":         {"wlan_tx_power", "WLAN transmit power in dBm", true},
 		}
 
 		for key, meta := range metricMap {
@@ -248,7 +250,7 @@ func (c *WLANCollector) collectInterfaces(e *entry.RouterEntry, mb *MetricBuilde
 			"band":              "WLAN frequency band (2g/5g)",
 			"country":           "WLAN regulatory domain country",
 			"mode":              "WLAN operating mode (ap-bridge/station/etc)",
-			"wireless-protocol": "WLAN protocol (802.11a/b/g/n/ac/ax)",
+			"wireless_protocol": "WLAN protocol (802.11a/b/g/n/ac/ax)",
 		}
 
 		for key, help := range infoFields {

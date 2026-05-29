@@ -3,6 +3,7 @@ package entry
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -48,6 +49,7 @@ type RouterEntry struct {
 
 	mu           sync.Mutex
 	dhcpCache    map[string]*dhcpCacheEntry // keyed by mac_address or ip_address
+	dhcpFetchMu  sync.Mutex                 // guards lazy DHCP cache population
 	wirelessType WirelessType
 	dhcpEntry    *RouterEntry
 	capsmanEntry *RouterEntry
@@ -227,26 +229,50 @@ func (e *RouterEntry) DHCPRecords() []map[string]string {
 	return out
 }
 
-// SetDHCPRecords populates the DHCP cache from a slice of lease records.
+// SetDHCPRecords replaces the DHCP cache with the given leases, keyed by
+// mac_address and address. Rebuilding wholesale (rather than merging) keeps the
+// cache bounded to the current lease set instead of accumulating stale keys.
 func (e *RouterEntry) SetDHCPRecords(records []map[string]string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.dhcpCache == nil {
-		e.dhcpCache = make(map[string]*dhcpCacheEntry)
-	}
+	cache := make(map[string]*dhcpCacheEntry, len(records)*2)
 	for _, r := range records {
 		if mac := r["mac_address"]; mac != "" {
-			e.dhcpCache[mac] = &dhcpCacheEntry{entryType: "mac_address", record: r}
+			cache[mac] = &dhcpCacheEntry{entryType: "mac_address", record: r}
 		}
 		if addr := r["address"]; addr != "" {
 			rec := make(map[string]string, len(r)+1)
-			for k, v := range r {
-				rec[k] = v
-			}
+			maps.Copy(rec, r)
 			rec["type"] = "address"
-			e.dhcpCache[addr] = &dhcpCacheEntry{entryType: "address", record: rec}
+			cache[addr] = &dhcpCacheEntry{entryType: "address", record: rec}
 		}
 	}
+
+	e.mu.Lock()
+	e.dhcpCache = cache
+	e.mu.Unlock()
+}
+
+// EnsureDHCPRecords populates the lease cache on the DHCP entry (the remote one
+// when remote_dhcp_entry is set) by calling fetch only when the cache is empty.
+// Concurrent callers are serialized so the lease table is fetched once.
+func (e *RouterEntry) EnsureDHCPRecords(ctx context.Context, fetch func(context.Context, *RouterEntry) ([]map[string]string, error)) {
+	de := e.DHCPEntry()
+
+	de.dhcpFetchMu.Lock()
+	defer de.dhcpFetchMu.Unlock()
+
+	de.mu.Lock()
+	populated := de.dhcpCache != nil
+	de.mu.Unlock()
+	if populated {
+		return
+	}
+
+	records, err := fetch(ctx, de)
+	if err != nil {
+		slog.Debug("DHCP cache populate failed", "router", de.RouterName, "err", err)
+		return
+	}
+	de.SetDHCPRecords(records)
 }
 
 // WirelessType returns the wireless stack type, detecting it on first call.

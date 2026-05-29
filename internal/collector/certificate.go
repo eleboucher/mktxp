@@ -45,8 +45,8 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 			help       string
 			parseFloat bool
 		}{
-			"expires-after": {"certificate_expires_after", "Certificate expiration time in seconds", true},
-			"key-size":      {"certificate_key_size", "Certificate key size in bits", true},
+			"expires_after": {"certificate_expires_after", "Certificate expiration time in seconds", true},
+			"key_size":      {"certificate_key_size", "Certificate key size in bits", true},
 		}
 
 		for key, meta := range metricMap {
@@ -69,15 +69,15 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 			mb.GaugeVal(ch, "certificate_disabled", "Certificate disabled status", disabled, labelKeysWithRouter, labelVals)
 		}
 
-		if rec["expires-after"] != "" && rec["disabled"] != trueStr {
+		if rec["expires_after"] != "" && rec["disabled"] != trueStr {
 			mb.GaugeVal(ch, "certificate_valid", "Certificate validity status (1=valid, 0=expired/invalid)", 1, labelKeysWithRouter, labelVals)
 		} else {
 			mb.GaugeVal(ch, "certificate_valid", "Certificate validity status (1=valid, 0=expired/invalid)", 0, labelKeysWithRouter, labelVals)
 		}
 
 		metricInfo := map[string]string{
-			"key-type":      "Certificate key type (RSA/ECDSA)",
-			"serial-number": "Certificate serial number",
+			"key_type":      "Certificate key type (RSA/ECDSA)",
+			"serial_number": "Certificate serial number",
 			"fingerprint":   "Certificate fingerprint",
 		}
 
@@ -88,10 +88,10 @@ func (c *CertificateCollector) Collect(ctx context.Context, e *entry.RouterEntry
 		}
 
 		metricFields := []struct{ metric, key string }{
-			{"certificate_issuer_cn", "issuer-cn"},
-			{"certificate_not_before", "not-before"},
-			{"certificate_not_after", "not-after"},
-			{"certificate_common_name", "common-name"},
+			{"certificate_issuer_cn", "issuer_cn"},
+			{"certificate_not_before", "not_before"},
+			{"certificate_not_after", "not_after"},
+			{"certificate_common_name", "common_name"},
 		}
 
 		for _, mf := range metricFields {

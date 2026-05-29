@@ -1,6 +1,9 @@
 package entry_test
 
 import (
+	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/eleboucher/mktxp/internal/config"
@@ -141,6 +144,75 @@ func TestSetDHCPRecords_OverwritesExistingEntries(t *testing.T) {
 	}
 	if got["address"] != "192.168.1.200" {
 		t.Errorf("address = %q, want 192.168.1.200 (updated)", got["address"])
+	}
+}
+
+func TestSetDHCPRecords_ReplacesStaleEntries(t *testing.T) {
+	t.Parallel()
+
+	e := newTestEntry()
+	e.SetDHCPRecords([]map[string]string{
+		{"mac_address": "AA:BB:CC:DD:EE:01", "address": "192.168.1.1"},
+		{"mac_address": "AA:BB:CC:DD:EE:02", "address": "192.168.1.2"},
+	})
+
+	// Second scrape sees only one lease; the stale one must be evicted.
+	e.SetDHCPRecords([]map[string]string{
+		{"mac_address": "AA:BB:CC:DD:EE:02", "address": "192.168.1.2"},
+	})
+
+	if got := e.DHCPRecord("AA:BB:CC:DD:EE:01"); got != nil {
+		t.Errorf("stale MAC should be evicted on replace, got %v", got)
+	}
+	if got := e.DHCPRecord("192.168.1.1"); got != nil {
+		t.Errorf("stale IP should be evicted on replace, got %v", got)
+	}
+	if got := e.DHCPRecord("AA:BB:CC:DD:EE:02"); got == nil {
+		t.Error("current lease should still be present")
+	}
+}
+
+func TestEnsureDHCPRecords_FetchesOnceThenCaches(t *testing.T) {
+	t.Parallel()
+
+	e := newTestEntry()
+	var calls atomic.Int32
+	fetch := func(context.Context, *entry.RouterEntry) ([]map[string]string, error) {
+		calls.Add(1)
+		return []map[string]string{{"mac_address": "AA:BB:CC:DD:EE:FF", "address": "10.0.0.5"}}, nil
+	}
+
+	e.EnsureDHCPRecords(context.Background(), fetch)
+	e.EnsureDHCPRecords(context.Background(), fetch)
+
+	if got := calls.Load(); got != 1 {
+		t.Errorf("fetch called %d times, want 1 (cache should short-circuit)", got)
+	}
+	if rec := e.DHCPRecord("AA:BB:CC:DD:EE:FF"); rec == nil {
+		t.Error("expected lease populated by EnsureDHCPRecords")
+	}
+}
+
+func TestEnsureDHCPRecords_ConcurrentFetchesOnce(t *testing.T) {
+	t.Parallel()
+
+	e := newTestEntry()
+	var calls atomic.Int32
+	fetch := func(context.Context, *entry.RouterEntry) ([]map[string]string, error) {
+		calls.Add(1)
+		return []map[string]string{{"mac_address": "AA:BB:CC:DD:EE:FF", "address": "10.0.0.5"}}, nil
+	}
+
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			e.EnsureDHCPRecords(context.Background(), fetch)
+		})
+	}
+	wg.Wait()
+
+	if got := calls.Load(); got != 1 {
+		t.Errorf("concurrent EnsureDHCPRecords fetched %d times, want 1", got)
 	}
 }
 
