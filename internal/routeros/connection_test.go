@@ -36,7 +36,7 @@ func (f *fakeClient) RunArgsContext(ctx context.Context, _ []string) (*routeros.
 	return nil, f.runErr
 }
 
-func (f *fakeClient) ListenArgsQueue(_ []string, _ int) (*routeros.ListenReply, error) {
+func (f *fakeClient) ListenArgsQueueContext(_ context.Context, _ []string, _ int) (*routeros.ListenReply, error) {
 	f.listenCalls++
 	return nil, f.listenErr
 }
@@ -311,6 +311,26 @@ func TestRun_ErrorResetsRunClientOnly(t *testing.T) {
 	}
 	if c.failureCount != 1 {
 		t.Errorf("failureCount = %d, want 1", c.failureCount)
+	}
+}
+
+func TestDropStream_ClosesWithoutRecordingFailure(t *testing.T) {
+	t.Parallel()
+
+	streamFake := &fakeClient{}
+	c := NewConnection(ConnectionConfig{RouterName: "r", Hostname: "h"})
+	c.streamClient = streamFake
+
+	c.dropStream(streamFake)
+
+	if c.streamClient != nil {
+		t.Error("streamClient should be nil after dropStream")
+	}
+	if !streamFake.closed {
+		t.Error("stream client should have been closed")
+	}
+	if c.failureCount != 0 {
+		t.Errorf("dropStream must not record a failure, got failureCount = %d", c.failureCount)
 	}
 }
 

@@ -56,7 +56,7 @@ type credentialsFile struct {
 // apiClient is the subset of *routeros.Client used by Connection.
 type apiClient interface {
 	RunArgsContext(ctx context.Context, sentence []string) (*routeros.Reply, error)
-	ListenArgsQueue(sentence []string, queueSize int) (*routeros.ListenReply, error)
+	ListenArgsQueueContext(ctx context.Context, sentence []string, queueSize int) (*routeros.ListenReply, error)
 	Close() error
 }
 
@@ -160,6 +160,18 @@ func (c *Connection) failStream(cl apiClient) {
 	}
 }
 
+// dropStream closes and forgets the stream client without recording a failure.
+// RunStream tears the client down after every stream because go-routeros's
+// listen cancellation kills the client's reader; the next scrape dials anew.
+func (c *Connection) dropStream(cl apiClient) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.streamClient == cl {
+		_ = c.streamClient.Close()
+		c.streamClient = nil
+	}
+}
+
 func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]string, error) {
 	c.mu.Lock()
 	cl := c.runClient
@@ -258,7 +270,16 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 		return err
 	}
 
-	l, err := cl.ListenArgsQueue(sentence, 1000)
+	// go-routeros binds an internal goroutine to the listen context that only
+	// returns once the context is cancelled (it then tears down the client's
+	// reader). Give it a dedicated context cancelled on return so it can't leak,
+	// and drop the stream client afterwards — its reader is now dead, so the next
+	// scrape dials a fresh session.
+	listenCtx, cancelListen := context.WithCancel(context.Background())
+	defer cancelListen()
+	defer c.dropStream(cl)
+
+	l, err := cl.ListenArgsQueueContext(listenCtx, sentence, 1000)
 	if err != nil {
 		if !isContextError(err) {
 			c.failStream(cl)
