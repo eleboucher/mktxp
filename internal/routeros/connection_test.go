@@ -11,6 +11,7 @@ import (
 	"time"
 
 	routeros "github.com/go-routeros/routeros/v3"
+	"github.com/go-routeros/routeros/v3/proto"
 )
 
 // fakeClient implements apiClient for unit tests.
@@ -33,7 +34,53 @@ func (f *fakeClient) RunArgsContext(ctx context.Context, _ []string) (*routeros.
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	return nil, f.runErr
+	return &routeros.Reply{}, f.runErr
+}
+
+func TestRunDeviceErrors(t *testing.T) {
+	for _, word := range []string{"!trap", "!fatal"} {
+		t.Run(word, func(t *testing.T) {
+			deviceErr := &routeros.DeviceError{Sentence: &proto.Sentence{
+				Word: word, Map: map[string]string{"message": "no such command prefix"},
+			}}
+			fake := &fakeClient{runErr: fmt.Errorf("command: %w", deviceErr)}
+			c := NewConnection(ConnectionConfig{RouterName: "hap"})
+			c.runClient = fake
+			if _, err := c.Run(context.Background(), "/interface/wireless/print"); !errors.Is(err, deviceErr) {
+				t.Fatalf("expected original command error, got %v", err)
+			}
+			if word == "!fatal" {
+				if !fake.closed || c.IsConnected() || c.failureCount != 1 {
+					t.Fatal("fatal error must close the session and record failure")
+				}
+				return
+			}
+			if fake.closed || !c.IsConnected() || c.failureCount != 0 || !c.lastFailure.IsZero() {
+				t.Fatal("command trap must preserve the connection without backoff")
+			}
+			fake.runErr = nil
+			if _, err := c.Run(context.Background(), "/system/resource/print"); err != nil {
+				t.Fatalf("subsequent collector failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestRunStreamTrapDoesNotRecordFailure(t *testing.T) {
+	trap := &routeros.DeviceError{Sentence: &proto.Sentence{Word: "!trap", Map: map[string]string{"message": "no such command prefix"}}}
+	runFake := &fakeClient{}
+	streamFake := &fakeClient{listenErr: trap}
+	c := NewConnection(ConnectionConfig{})
+	c.runClient, c.streamClient = runFake, streamFake
+	if err := c.RunStream(context.Background(), func(map[string]string) {}, "/unsupported"); !errors.Is(err, trap) {
+		t.Fatalf("expected command trap, got %v", err)
+	}
+	if runFake.closed || !c.IsConnected() || c.failureCount != 0 {
+		t.Fatal("stream command trap must not affect run connection or backoff")
+	}
+	if !streamFake.closed || c.streamClient != nil {
+		t.Fatal("stream session should still be dropped after listen ends")
+	}
 }
 
 func (f *fakeClient) ListenArgsQueueContext(_ context.Context, _ []string, _ int) (*routeros.ListenReply, error) {

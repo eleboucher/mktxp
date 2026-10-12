@@ -183,8 +183,9 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 
 	reply, err := cl.RunArgsContext(ctx, sentence)
 	if err != nil {
-		// ctx cancel means the caller gave up; don't tear down a healthy socket.
-		if !isContextError(err) {
+		// Command traps (unsupported features or permissions) leave the session
+		// usable. Only connection failures should close it and trigger backoff.
+		if isConnectionError(err) {
 			c.failRunLocked(cl)
 		}
 		c.mu.Unlock()
@@ -206,6 +207,17 @@ func (c *Connection) Run(ctx context.Context, sentence ...string) ([]map[string]
 
 func isContextError(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func isConnectionError(err error) bool {
+	if err == nil || isContextError(err) {
+		return false
+	}
+	var deviceErr *routeros.DeviceError
+	if errors.As(err, &deviceErr) && deviceErr.Sentence != nil && deviceErr.Sentence.Word == "!trap" {
+		return false
+	}
+	return true
 }
 
 func (c *Connection) dial(ctx context.Context, username, password string) (*routeros.Client, error) {
@@ -281,7 +293,7 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 
 	l, err := cl.ListenArgsQueueContext(listenCtx, sentence, 1000)
 	if err != nil {
-		if !isContextError(err) {
+		if isConnectionError(err) {
 			c.failStream(cl)
 		}
 		return err
@@ -305,7 +317,7 @@ func (c *Connection) RunStream(ctx context.Context, callback func(map[string]str
 			if !ok {
 				// Stream finished or connection dropped.
 				if err := l.Err(); err != nil {
-					if !isContextError(err) {
+					if isConnectionError(err) {
 						c.failStream(cl)
 					}
 					return err
