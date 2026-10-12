@@ -22,7 +22,11 @@ func NewEnvConfigurator() *EnvConfigurator {
 func (e *EnvConfigurator) ApplyRouterOverrides(h *ConfigHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	applyRouterEnvOverrides(h)
+	return nil
+}
 
+func applyRouterEnvOverrides(h *ConfigHandler) {
 	// Build a case-normalised lookup (UPPERCASE_KEY → value) so that router
 	// names in env var keys are matched case-insensitively on Linux.
 	envMap := buildEnvMap()
@@ -32,14 +36,17 @@ func (e *EnvConfigurator) ApplyRouterOverrides(h *ConfigHandler) error {
 		rv := viperFromEnvMap(prefix, envMap)
 		applyRouterOverridesFromViper(rv, routerName, entry)
 	}
-	return nil
 }
 
 // ApplySystemOverrides applies MKTXP_{FIELD} env vars to system config.
 func (e *EnvConfigurator) ApplySystemOverrides(h *ConfigHandler) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	applySystemEnvOverrides(h)
+	return nil
+}
 
+func applySystemEnvOverrides(h *ConfigHandler) {
 	v := viper.New()
 	v.SetEnvPrefix(envPrefix)
 	v.AutomaticEnv()
@@ -61,7 +68,6 @@ func (e *EnvConfigurator) ApplySystemOverrides(h *ConfigHandler) error {
 		}
 		slog.Info("Applied system env override", "field", fieldName)
 	}
-	return nil
 }
 
 // buildEnvMap scans os.Environ() and returns an uppercase-keyed map of all

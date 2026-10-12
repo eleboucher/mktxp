@@ -30,8 +30,12 @@ func runInfo(cmd *cobra.Command, args []string) {
 	fmt.Printf("Git Commit:     %s\n", info["git_commit"])
 	fmt.Printf("Build Date:     %s\n", info["build_date"])
 	fmt.Println()
-	fmt.Printf("Config Dir:     %s\n", config.Handler.ConfigDir())
-	fmt.Printf("Main Config:    %s\n", config.Handler.MainConfPath())
+	if config.Handler.MainConfPath() == "" {
+		fmt.Println("Configuration:  environment variables only")
+	} else {
+		fmt.Printf("Config Dir:     %s\n", config.Handler.ConfigDir())
+		fmt.Printf("Main Config:    %s\n", config.Handler.MainConfPath())
+	}
 	fmt.Println()
 	fmt.Printf("Listen Address: %s\n", sysCfg.Listen)
 	fmt.Printf("Socket Timeout: %ds\n", sysCfg.SocketTimeout)

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -35,6 +36,7 @@ type ConfigHandler struct {
 	mainConfig *mainConfigFile // parsed mktxp.yaml
 	sysConfig  *SystemConfig   // parsed _mktxp.yaml
 	entryCache map[string]*RouterConfigEntry
+	envOnly    bool
 }
 
 // mainConfigFile is the top-level structure of mktxp.yaml.
@@ -49,6 +51,11 @@ type mainConfigFile struct {
 func (h *ConfigHandler) Init(cfgDir string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	if routers, ok := os.LookupEnv("MKTXP_ROUTERS"); ok {
+		return h.loadEnvOnly(routers)
+	}
+	h.envOnly = false
 
 	if cfgDir == "" {
 		home, err := os.UserHomeDir()
@@ -174,12 +181,18 @@ func (h *ConfigHandler) RegisteredEntries() []string {
 func (h *ConfigHandler) MainConfPath() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	if h.envOnly {
+		return ""
+	}
 	return filepath.Join(h.cfgDir, "mktxp.yaml")
 }
 
 func (h *ConfigHandler) SysConfPath() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	if h.envOnly {
+		return ""
+	}
 	return filepath.Join(h.cfgDir, "_mktxp.yaml")
 }
 
@@ -212,6 +225,9 @@ func (h *ConfigHandler) RegisterTestRouterEntry(name string, cfg *RouterConfigEn
 func (h *ConfigHandler) Reload() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.envOnly {
+		return h.loadEnvOnly(os.Getenv("MKTXP_ROUTERS"))
+	}
 	mainPath := filepath.Join(h.cfgDir, "mktxp.yaml")
 	sysPath := filepath.Join(h.cfgDir, "_mktxp.yaml")
 	if err := h.loadMain(mainPath); err != nil {
@@ -221,5 +237,38 @@ func (h *ConfigHandler) Reload() error {
 		return err
 	}
 	h.buildEntryCache()
+	return nil
+}
+
+// loadEnvOnly initializes in-memory defaults without accessing config files.
+// The caller must hold h.mu.
+func (h *ConfigHandler) loadEnvOnly(routers string) error {
+	mc := &mainConfigFile{Routers: make(map[string]rawEntry)}
+	seen := make(map[string]bool)
+	for _, name := range strings.Split(routers, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return fmt.Errorf("config: MKTXP_ROUTERS must contain non-empty comma-separated router names")
+		}
+		for _, c := range name {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+				return fmt.Errorf("config: invalid router name %q in MKTXP_ROUTERS: use letters, digits, or underscores", name)
+			}
+		}
+		key := strings.ToUpper(name)
+		if seen[key] {
+			return fmt.Errorf("config: duplicate router name %q in MKTXP_ROUTERS (case-insensitive)", name)
+		}
+		seen[key] = true
+		mc.Routers[name] = rawEntry{}
+	}
+	h.mainConfig = mc
+	sc := hardcodedSystemDefaults()
+	h.sysConfig = &sc
+	h.cfgDir = ""
+	h.envOnly = true
+	h.buildEntryCache()
+	applySystemEnvOverrides(h)
+	applyRouterEnvOverrides(h)
 	return nil
 }

@@ -41,6 +41,10 @@ func runShow(cmd *cobra.Command, args []string) {
 }
 
 func showConfigPaths() {
+	if config.Handler.MainConfPath() == "" {
+		fmt.Println("MKTXP Configuration: environment variables only (MKTXP_ROUTERS)")
+		return
+	}
 	fmt.Println("MKTXP Configuration Files:")
 	fmt.Printf("  Config Directory: %s\n", config.Handler.ConfigDir())
 	fmt.Printf("  Main Config:      %s\n", config.Handler.MainConfPath())

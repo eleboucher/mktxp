@@ -165,7 +165,23 @@ Global Flags:
 
 ### Environment Variable Overrides
 
-Configuration can be overridden using environment variables. Environment variables take priority over YAML config and credentials files.
+Set `MKTXP_ROUTERS` to run entirely from environment variables, without creating or reading YAML configuration files:
+
+```bash
+export MKTXP_ROUTERS=home,office
+export MKTXP_HOME_HOSTNAME=192.168.88.1
+export MKTXP_HOME_USERNAME=metrics
+export MKTXP_HOME_PASSWORD=your_password
+export MKTXP_OFFICE_HOSTNAME=192.168.89.1
+export MKTXP_OFFICE_USERNAME=metrics
+export MKTXP_OFFICE_PASSWORD=your_password
+export MKTXP_LISTEN=0.0.0.0:49090
+./build/mktxp export
+```
+
+Router names are comma-separated, may contain letters, digits, and underscores, and must be unique regardless of case. Surrounding whitespace is ignored; empty names are rejected. Unspecified settings use built-in defaults. In this mode, `--cfg-dir` is ignored. Unset `MKTXP_ROUTERS` to use YAML configuration again.
+
+Configuration can also be overridden using environment variables in YAML mode. Environment variables take priority over YAML config and credentials files.
 
 **Router-specific overrides** (format: `MKTXP_{ROUTERNAME}_{FIELD}`):
 ```bash

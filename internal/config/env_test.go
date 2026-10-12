@@ -2,8 +2,61 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestEnvOnlyConfig(t *testing.T) {
+	t.Setenv("MKTXP_ROUTERS", "home, Office_router")
+	t.Setenv("MKTXP_HOME_HOSTNAME", "192.168.88.1")
+	t.Setenv("MKTXP_HOME_USERNAME", "metrics")
+	t.Setenv("MKTXP_HOME_PASSWORD", "secret")
+	t.Setenv("MKTXP_HOME_HEALTH", "false")
+	t.Setenv("MKTXP_OFFICE_ROUTER_PORT", "8729")
+	t.Setenv("MKTXP_LISTEN", ":9090")
+	// A file where a config directory would be proves Init skips filesystem access.
+	dir := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(dir, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &ConfigHandler{}
+	if err := h.Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.RegisteredEntries()) != 2 || h.RouterEntry("Office_router").Port != 8729 {
+		t.Fatal("expected both env routers with overrides")
+	}
+	r := h.RouterEntry("home")
+	if r.Hostname != "192.168.88.1" || r.Username != "metrics" || r.Password != "secret" || r.Health || !r.Enabled || r.Port != 8728 {
+		t.Fatalf("unexpected router settings: hostname=%q username=%q health=%v enabled=%v port=%d", r.Hostname, r.Username, r.Health, r.Enabled, r.Port)
+	}
+	if h.SystemEntry().Listen != ":9090" || h.SystemEntry().SocketTimeout != hardcodedSystemDefaults().SocketTimeout {
+		t.Fatal("expected system defaults and env overrides")
+	}
+	if h.ConfigDir() != "" || h.MainConfPath() != "" || h.SysConfPath() != "" {
+		t.Fatal("env-only mode should have no config paths")
+	}
+	t.Setenv("MKTXP_ROUTERS", "home")
+	t.Setenv("MKTXP_HOME_HOSTNAME", "192.168.88.2")
+	t.Setenv("MKTXP_LISTEN", ":9091")
+	if err := h.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.RegisteredEntries()) != 1 || h.RouterEntry("home").Hostname != "192.168.88.2" || h.SystemEntry().Listen != ":9091" {
+		t.Fatal("reload should re-read env routers and settings")
+	}
+}
+
+func TestEnvOnlyInvalidRouterNames(t *testing.T) {
+	for _, names := range []string{"", " ", "home,", ",home", "home,HOME", "home-router", "home router"} {
+		t.Run(names, func(t *testing.T) {
+			t.Setenv("MKTXP_ROUTERS", names)
+			if err := (&ConfigHandler{}).Init(t.TempDir()); err == nil {
+				t.Fatalf("expected invalid MKTXP_ROUTERS %q to fail", names)
+			}
+		})
+	}
+}
 
 func setenv(t *testing.T, key, value string) {
 	t.Helper()
